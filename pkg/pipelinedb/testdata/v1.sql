@@ -1,0 +1,52 @@
+PRAGMA foreign_keys=OFF;
+BEGIN TRANSACTION;
+CREATE TABLE metadata (
+	pk INTEGER NOT NULL,
+	created_at TIMESTAMP NOT NULL,
+	updated_at TIMESTAMP NOT NULL,
+	version INTEGER NOT NULL,
+	attempts INTEGER NOT NULL,
+	spender TEXT,
+	payer TEXT,
+	PRIMARY KEY ( pk )
+);
+INSERT INTO metadata VALUES(1,'2019-09-14 15:03:11.593+00:00','2019-09-14 15:03:11.593+00:00',1,0,NULL,NULL);
+CREATE TABLE payout_group (
+	pk INTEGER NOT NULL,
+	created_at TIMESTAMP NOT NULL,
+	updated_at TIMESTAMP NOT NULL,
+	id INTEGER NOT NULL,
+	final_tx_hash TEXT,
+	PRIMARY KEY ( pk ),
+	UNIQUE ( id )
+);
+INSERT INTO payout_group VALUES(1,'2019-09-14 15:03:11.608+00:00','2019-09-14 15:03:11.608+00:00',1,NULL);
+CREATE TABLE payout (
+	pk INTEGER NOT NULL,
+	created_at TIMESTAMP NOT NULL,
+	csv_line INTEGER NOT NULL,
+	payee TEXT NOT NULL,
+	usd TEXT NOT NULL,
+	payout_group_id INTEGER NOT NULL REFERENCES payout_group( id ),
+	PRIMARY KEY ( pk )
+);
+INSERT INTO payout VALUES(1,'2019-09-14 15:03:11.608+00:00',2,'0xC043c8e32697298CaE99AD69027aAbd84610D244','0.00005',1);
+CREATE TABLE tx (
+	pk INTEGER NOT NULL,
+	created_at TIMESTAMP NOT NULL,
+	updated_at TIMESTAMP NOT NULL,
+	hash TEXT NOT NULL,
+	payer TEXT NOT NULL,
+	spender TEXT NOT NULL,
+	nonce INTEGER NOT NULL,
+	estimated_gas_price TEXT NOT NULL,
+	storj_price TEXT NOT NULL,
+	storj_tokens TEXT NOT NULL,
+	payout_group_id INTEGER NOT NULL REFERENCES payout_group( id ),
+	raw TEXT NOT NULL,
+	state TEXT NOT NULL,
+	receipt TEXT,
+	PRIMARY KEY ( pk ),
+	UNIQUE ( hash )
+);
+COMMIT;

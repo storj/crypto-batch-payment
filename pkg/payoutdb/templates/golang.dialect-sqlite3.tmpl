@@ -1,0 +1,28 @@
+{{- define "import" }}
+	"github.com/mattn/go-sqlite3"
+{{ end -}}
+
+{{- define "is-constraint-error" }}
+func (impl {{ .Receiver }}) isConstraintError(err error) (
+	constraint string, ok bool) {
+	if e, ok := err.(sqlite3.Error); ok {
+			if e.Code == sqlite3.ErrConstraint {
+				msg := err.Error()
+				colon := strings.LastIndex(msg, ":")
+				if colon != -1 {
+					return strings.TrimSpace(msg[colon:]), true
+				}
+				return "", true
+			}
+	}
+	return "", false
+}
+{{ end -}}
+
+{{- define "open" }}
+//lint:file-ignore SA4021,ST1000,ST1003,ST1012,ST1016,U1000 dbx generated code
+
+func opensqlite3(source string) (*sql.DB, error) {
+	return sql.Open("sqlite3", source)
+}
+{{ end -}}
