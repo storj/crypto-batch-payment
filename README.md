@@ -25,9 +25,10 @@ Features:
 Supported transfer types:
 
  * Ethereum ERC-20 transfer
- * ZkSync (1.0) transfer
- * ZkSync (1.0) withdraw (source is on ZkSync, destination on Ethereum. Fees can be paid in ERC-20 tokens)
- * Polygon ERC-20 transfer (experimental)
+ * [DEPRECATED] ZkSync (1.0) transfer
+ * [DEPRECATED] ZkSync (1.0) withdraw (source is on ZkSync, destination on Ethereum. Fees can be paid in ERC-20 tokens)
+ * [DEPRECATED] Polygon ERC-20 transfer (experimental)
+ * ZkSync 2.0 transfer
 
 ## Requirements
 
