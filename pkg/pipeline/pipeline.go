@@ -3,7 +3,6 @@ package pipeline
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"encoding/json"
 	"math/big"
 	"time"
@@ -42,11 +41,7 @@ var (
 type PipelineConfig struct {
 	// Log is the logger for logging pipeline progress
 	Log *zap.Logger
-
-	// Spender is the private key of the party issuing the transactions (i.e.
-	// the one that spends the gas).
-	Spender *ecdsa.PrivateKey
-
+	
 	// Owner is the address of the account that the STORJ token will be paid
 	// from. In a Transfer-based flow, the Owner will match the address derived
 	// from the Spender key. In a TransferFrom-based flow, it will be a

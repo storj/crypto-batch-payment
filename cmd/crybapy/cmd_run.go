@@ -2,11 +2,8 @@ package main
 
 import (
 	"fmt"
-	"math/big"
 	"path/filepath"
 	"time"
-
-	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/spf13/cobra"
 	"github.com/zeebo/errs"
@@ -14,19 +11,14 @@ import (
 	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
 	"storj.io/crypto-batch-payment/pkg/payouts"
 	"storj.io/crypto-batch-payment/pkg/pipeline"
-	"storj.io/crypto-batch-payment/pkg/storjtoken"
 )
 
 type runConfig struct {
 	*rootConfig
+	PayerConfig
 	Name                    string
 	SpenderKeyPath          string
-	Owner                   string
-	ContractAddress         string
 	EstimateCacheExpiry     time.Duration
-	MaxGas                  string
-	MaxFee                  string
-	GasTipCap               string
 	CoinMarketCapAPIURL     string
 	CoinMarketCapAPIKeyPath string
 	QuoteCacheExpiry        time.Duration
@@ -35,7 +27,6 @@ type runConfig struct {
 	SkipConfirmation        bool
 	Drain                   bool
 	NodeType                string
-	PayerType               string
 }
 
 func newRunCommand(rootConfig *rootConfig) *cobra.Command {
@@ -56,16 +47,6 @@ func newRunCommand(rootConfig *rootConfig) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(
-		&config.Owner,
-		"owner", "",
-		"",
-		"Owner of the ERC20 token (spender if unset)")
-	cmd.Flags().StringVarP(
-		&config.ContractAddress,
-		"contract", "",
-		storjtoken.DefaultContractAddress.String(),
-		"Address of the STORJ contract on the network")
-	cmd.Flags().StringVarP(
 		&config.CoinMarketCapAPIURL,
 		"coinmarkcap-api-url", "",
 		coinmarketcap.ProductionAPIURL,
@@ -80,21 +61,6 @@ func newRunCommand(rootConfig *rootConfig) *cobra.Command {
 		"estimate-cache-expiry", "",
 		time.Second*5,
 		"How often gas estimates should be recalculated")
-	cmd.Flags().StringVarP(
-		&config.MaxGas,
-		"max-gas", "",
-		"70"+"000"+"000"+"000",
-		"Max gas price we're willing to consider in Wei (tip + base fee). Default: 70 GWei. Only applies to Eth type payment.")
-	cmd.Flags().StringVarP(
-		&config.MaxFee,
-		"max-fee", "",
-		"",
-		"Max fee we're willing to consider. Only applies to zksync or zkwithdraw type payment.")
-	cmd.Flags().StringVarP(
-		&config.GasTipCap,
-		"gas-tip-cap", "",
-		"1000000000",
-		"Gas tip for miners on top of EIP-1559 standard gas price (in Wei). Default: use gas oracle.")
 	cmd.Flags().DurationVarP(
 		&config.QuoteCacheExpiry,
 		"quote-cache-expiry", "",
@@ -125,39 +91,12 @@ func newRunCommand(rootConfig *rootConfig) *cobra.Command {
 		"node-type", "",
 		string(pipeline.Geth),
 		"Node type (one of [geth, parity])")
-	cmd.Flags().StringVarP(
-		&config.PayerType,
-		"type", "",
-		string(payouts.Eth),
-		"Type of the payment (eth,zksync,zkwithdraw,sim,polygon)")
 	return cmd
 }
 
 func doRun(config *runConfig) error {
-	spenderKey, spenderAddress, err := loadETHKey(config.SpenderKeyPath, "spender")
-	if err != nil {
-		return err
-	}
-
-	owner := spenderAddress
-	if config.Owner != "" {
-		owner, err = convertAddress(config.Owner, "owner")
-		if err != nil {
-			return err
-		}
-	}
-
-	contractAddress, err := convertAddress(config.ContractAddress, "contract")
-	if err != nil {
-		return err
-	}
 
 	nodeType, err := pipeline.NodeTypeFromString(config.NodeType)
-	if err != nil {
-		return err
-	}
-
-	payerType, err := payouts.PayerTypeFromString(config.PayerType)
 	if err != nil {
 		return err
 	}
@@ -165,11 +104,6 @@ func doRun(config *runConfig) error {
 	coinMarketCapAPIKey, err := loadFirstLine(config.CoinMarketCapAPIKeyPath)
 	if err != nil {
 		return errs.New("failed to load CoinMarketCap key: %v\n", err)
-	}
-
-	chainID, err := convertInt(config.ChainID, 0, "chain-id")
-	if err != nil {
-		return err
 	}
 
 	quoter, err := coinmarketcap.NewCachingClient(config.CoinMarketCapAPIURL, coinMarketCapAPIKey, config.QuoteCacheExpiry)
@@ -185,58 +119,31 @@ func doRun(config *runConfig) error {
 		}
 	}
 
-	var maxGas big.Int
-	_, ok := maxGas.SetString(config.MaxGas, 10)
-	if !ok {
-		return errs.New("invalid max gas setting")
-	}
-
-	var maxFee *big.Int
-	if config.MaxFee != "" {
-		var tmp big.Int
-		if _, ok := tmp.SetString(config.MaxFee, 10); !ok {
-			return errs.New("invalid max fee setting")
-		}
-		maxFee = &tmp
-	}
-
-	var gasTipCap *big.Int
-	if config.GasTipCap != "" {
-		gasTipCap = new(big.Int)
-		_, ok = gasTipCap.SetString(config.GasTipCap, 10)
-		if !ok {
-			return errs.New("invalid gas tip cap setting")
-		}
-		if gasTipCap.Cmp(big.NewInt(30*params.GWei)) > 0 {
-			return errs.New("Gas tip cap is too high. Please use value less than 30 gwei")
-		}
-
-		if gasTipCap.Cmp(big.NewInt(int64(100))) < 0 {
-			return errs.New("Gas tip cap is negligible. Please check if you really used wei unit (or set 0)")
-		}
+	log, err := openLog(config.DataDir)
+	if err != nil {
+		return err
 	}
 
 	fmt.Printf("Running %q payout...\n", config.Name)
-	err = payouts.Run(config.Ctx, payouts.Config{
-		DataDir:             config.DataDir,
-		Name:                config.Name,
-		Spender:             spenderKey,
-		ChainID:             *chainID,
-		Owner:               owner,
-		EstimateCacheExpiry: config.EstimateCacheExpiry,
-		MaxGas:              maxGas,
-		MaxFee:              maxFee,
-		GasTipCap:           gasTipCap,
-		Quoter:              quoter,
-		ContractAddress:     contractAddress,
-		PipelineLimit:       config.PipelineLimit,
-		TxDelay:             config.TxDelay,
-		Drain:               config.Drain,
-		NodeType:            nodeType,
-		PromptConfirm:       promptConfirm,
-		PayerType:           payerType,
-		NodeAddress:         config.NodeAddress,
-	})
+	payer, err := CreatePayer(config.Ctx, log, config.PayerConfig, config.NodeAddress, config.ChainID, config.SpenderKeyPath)
+	if err != nil {
+		return err
+	}
+	err = payouts.Run(config.Ctx,
+		log,
+		payouts.Config{
+			DataDir: config.DataDir,
+			Name:    config.Name,
+
+			EstimateCacheExpiry: config.EstimateCacheExpiry,
+			Quoter:              quoter,
+
+			PipelineLimit: config.PipelineLimit,
+			TxDelay:       config.TxDelay,
+			Drain:         config.Drain,
+			NodeType:      nodeType,
+			PromptConfirm: promptConfirm,
+		}, payer)
 	if err != nil {
 		return err
 	}

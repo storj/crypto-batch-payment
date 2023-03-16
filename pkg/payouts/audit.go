@@ -39,10 +39,10 @@ type AuditStats struct {
 	DoublePayStorj *big.Int
 }
 
-func Audit(ctx context.Context, dir string, csvPath string, payerType PayerType, nodeAddress string, chainID int, sink AuditSink, receiptsOut string, receiptsForce bool) (*AuditStats, error) {
+func Audit(ctx context.Context, dir string, csvPath string, payerType payer.PayerType, nodeAddress string, chainID int, sink AuditSink, receiptsOut string, receiptsForce bool) (*AuditStats, error) {
 	var auditor payer.Auditor
 	switch payerType {
-	case Eth, Polygon:
+	case payer.Eth, payer.Polygon:
 		client, err := ethclient.Dial(nodeAddress)
 		if err != nil {
 			return nil, errs.New("Failed to dial node %q: %v\n", nodeAddress, err)
@@ -52,9 +52,9 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType PayerType,
 		if err != nil {
 			return nil, err
 		}
-	case Sim:
+	case payer.Sim:
 		auditor = payer.NewSimAuditor()
-	case ZkSync, ZkWithdraw:
+	case payer.ZkSync, payer.ZkWithdraw:
 		var err error
 		auditor, err = zksync.NewAuditor(
 			nodeAddress,

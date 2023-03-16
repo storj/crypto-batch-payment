@@ -22,6 +22,7 @@ type zkSyncDepositConfig struct {
 	Account        string
 	Amount         string
 	SpenderKeyPath string
+	GasTipCap      int64
 	ZkNodeAddress  string
 }
 
@@ -40,6 +41,11 @@ func newZkSyncDepositCommand(zkSyncConfig *zkSyncConfig) *cobra.Command {
 			return checkCmd(doZkSyncDeposit(config))
 		},
 	}
+	cmd.PersistentFlags().Int64VarP(
+		&config.GasTipCap,
+		"gas-tip-cap", "",
+		1_000_000_000,
+		"Gas tip cap, paid on top of the base gas.")
 	cmd.Flags().StringVarP(
 		&config.ZkNodeAddress,
 		"zk-node-address", "",

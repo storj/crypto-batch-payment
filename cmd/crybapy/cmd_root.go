@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"storj.io/crypto-batch-payment/pkg/storjtoken"
 
 	"github.com/spf13/cobra"
-	"storj.io/crypto-batch-payment/pkg/storjtoken"
 )
 
 const (
@@ -22,7 +22,6 @@ type rootConfig struct {
 	NodeAddress string
 	ChainID     string
 	DataDir     string
-	GasTipCap   int64
 }
 
 func newRootCommand() *cobra.Command {
@@ -51,11 +50,6 @@ func newRootCommand() *cobra.Command {
 		"data-dir", "",
 		defaultDataDir,
 		"Directory to store data (e.g. payout metadata)")
-	cmd.PersistentFlags().Int64VarP(
-		&config.GasTipCap,
-		"gas-tip-cap", "",
-		1_000_000_000,
-		"Gas tip cap, paid on top of the base gas.")
 
 	cmd.AddCommand(newImportCommand(config))
 	cmd.AddCommand(newRunCommand(config))
