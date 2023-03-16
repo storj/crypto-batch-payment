@@ -8,12 +8,12 @@ import (
 )
 
 func Test_doZkSyncBalance(t *testing.T) {
-
+	t.Skip("Rrequires new deployed contract to the new test chain")
 	cfg := zkSyncBalanceConfig{
 		Account: "0x712Ce0cBEe9423E414493542FfebF418C16c1C96",
 		zkSyncConfig: &zkSyncConfig{
 			rootConfig: &rootConfig{
-				NodeAddress: "https://rinkeby-api.zksync.io",
+				NodeAddress: "https://goerli-api.zksync.io",
 				ChainID:     "4",
 			},
 		},

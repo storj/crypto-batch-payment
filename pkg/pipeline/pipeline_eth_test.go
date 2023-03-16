@@ -904,7 +904,6 @@ func (test *PipelineTest) newPipeline(stepInCh chan chan []*pipelinedb.NonceGrou
 	test.R.NoError(err)
 	pipeline, err := NewPipeline(payer, PipelineConfig{
 		Log:          zaptest.NewLogger(test),
-		Spender:      spenderKey,
 		Owner:        owner.Address,
 		Quoter:       test.Quoter,
 		DB:           test.DB,

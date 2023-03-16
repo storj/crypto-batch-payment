@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -49,7 +49,6 @@ type Network struct {
 	engine     *ethash.Ethash
 	node       *node.Node
 	ethservice *eth.Ethereum
-	ethpriv    *eth.PrivateDebugAPI
 	clients    []*rpc.Client
 }
 
@@ -99,8 +98,6 @@ func NewNetwork(tb testing.TB, opts ...NetworkOption) *Network {
 	require.NoError(tb, network.node.Start(), "unable to start test node")
 
 	network.insertBlocks(genesis.ToBlock(network.db), config.numBlocks, config.generate)
-
-	network.ethpriv = eth.NewPrivateDebugAPI(network.ethservice)
 
 	init = true
 	return network
@@ -155,7 +152,7 @@ func (network *Network) TraceTransaction(ctx context.Context, hash common.Hash, 
 	require.NoError(network.tb, err)
 	j, err := json.MarshalIndent(raw, "", "  ")
 	require.NoError(network.tb, err)
-	err = ioutil.WriteFile(fmt.Sprintf("%x.tx.json", hash), j, 0644)
+	err = os.WriteFile(fmt.Sprintf("%x.tx.json", hash), j, 0644)
 	require.NoError(network.tb, err)
 }
 
