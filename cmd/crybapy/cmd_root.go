@@ -56,6 +56,7 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newAuditCommand(config))
 	cmd.AddCommand(newPriceCommand(config))
 	cmd.AddCommand(newZkSyncCommand(config))
+	cmd.AddCommand(newPayerCommand(config))
 	return cmd
 }
 
