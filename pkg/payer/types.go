@@ -1,4 +1,4 @@
-package payouts
+package payer
 
 import (
 	"strings"

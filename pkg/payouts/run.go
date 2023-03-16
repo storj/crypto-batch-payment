@@ -2,27 +2,17 @@ package payouts
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
-
-	"math/big"
-	"os"
+	"go.uber.org/zap"
 	"path/filepath"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/zeebo/errs"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 
 	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
-	"storj.io/crypto-batch-payment/pkg/eth"
 	"storj.io/crypto-batch-payment/pkg/pipeline"
 	"storj.io/crypto-batch-payment/pkg/storjtoken"
-	"storj.io/crypto-batch-payment/pkg/zksync"
 )
 
 type Config struct {
@@ -30,22 +20,9 @@ type Config struct {
 
 	Name string
 
-	Spender *ecdsa.PrivateKey
-
-	ChainID big.Int
-
-	Owner common.Address
-
 	Quoter coinmarketcap.Quoter
 
 	EstimateCacheExpiry time.Duration
-
-	MaxGas big.Int
-	MaxFee *big.Int
-
-	GasTipCap *big.Int
-
-	ContractAddress common.Address
 
 	PipelineLimit int
 
@@ -56,13 +33,9 @@ type Config struct {
 	NodeType pipeline.NodeType
 
 	PromptConfirm func(label string) error
-
-	NodeAddress string
-
-	PayerType PayerType
 }
 
-func Run(ctx context.Context, config Config) error {
+func Run(ctx context.Context, log *zap.Logger, config Config, paymentPayer payer.Payer) error {
 	runDir := filepath.Join(config.DataDir, config.Name)
 	dbPath := dbPathFromDir(runDir)
 
@@ -82,65 +55,6 @@ func Run(ctx context.Context, config Config) error {
 		return err
 	}
 
-	log, err := openLog(runDir)
-	if err != nil {
-		return err
-	}
-
-	var paymentPayer payer.Payer
-	switch config.PayerType {
-	case Eth, Polygon:
-		client, err := ethclient.Dial(config.NodeAddress)
-		if err != nil {
-			return errs.New("Failed to dial node %q: %v\n", config.NodeAddress, err)
-		}
-		defer client.Close()
-
-		paymentPayer, err = eth.NewEthPayer(ctx,
-			log,
-			client,
-			config.ContractAddress,
-			config.Owner,
-			config.Spender,
-			&config.ChainID,
-			config.GasTipCap,
-			&config.MaxGas)
-		if err != nil {
-			return err
-		}
-	case ZkSync:
-		paymentPayer, err = zksync.NewPayer(
-			ctx,
-			log,
-			config.NodeAddress,
-			config.Spender,
-			int(config.ChainID.Int64()),
-			false,
-			config.MaxFee)
-		if err != nil {
-			return err
-		}
-	case ZkWithdraw:
-		paymentPayer, err = zksync.NewPayer(
-			ctx,
-			log,
-			config.NodeAddress,
-			config.Spender,
-			int(config.ChainID.Int64()),
-			true,
-			config.MaxFee)
-		if err != nil {
-			return err
-		}
-	case Sim:
-		paymentPayer, err = payer.NewSimPayer(log)
-		if err != nil {
-			return err
-		}
-	default:
-		return errs.New("unsupported payer type: %v", config.PayerType)
-	}
-
 	decimals, err := paymentPayer.GetTokenDecimals(ctx)
 	if err != nil {
 		return err
@@ -153,7 +67,7 @@ func Run(ctx context.Context, config Config) error {
 
 	estimatedSTORJ := storjtoken.FromUSD(stats.PendingUSD, storjQuote.Price, decimals)
 
-	fmt.Printf("**PAYMENT TYPE**............: %s\n", config.PayerType)
+	fmt.Printf("**PAYMENT TYPE**............: %T\n", paymentPayer)
 	fmt.Printf("Current STORJ Price.........: $%s\n", storjQuote.Price.String())
 	fmt.Println()
 	fmt.Printf("Total Payees................: %d\n", stats.Payees)
@@ -192,8 +106,6 @@ func Run(ctx context.Context, config Config) error {
 
 	p, err := pipeline.NewPipeline(paymentPayer, pipeline.PipelineConfig{
 		Log:      log,
-		Spender:  config.Spender,
-		Owner:    config.Owner,
 		Quoter:   config.Quoter,
 		DB:       db,
 		Limit:    config.PipelineLimit,
@@ -210,59 +122,4 @@ func Run(ctx context.Context, config Config) error {
 	}
 
 	return nil
-}
-
-func openLog(dataDir string) (*zap.Logger, error) {
-	// Ensure a logs directory exists
-	logsDir := filepath.Join(dataDir, "logs")
-	if err := os.MkdirAll(logsDir, 0755); err != nil {
-		return nil, errs.Wrap(err)
-	}
-
-	// Name the log based on the current timestamp to millisecond precision
-	logName := time.Now().UTC().Format("2006.01.02.15.04.05.000Z") + ".json"
-
-	// Convert to an absolute path for the file URI passed to zap
-	logsPath, err := filepath.Abs(filepath.Join(logsDir, logName))
-	if err != nil {
-		return nil, errs.Wrap(err)
-	}
-
-	// Send info to stderr
-	stderrEncoder := zap.NewDevelopmentEncoderConfig()
-	stderrEncoder.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	stderrLog, err := (zap.Config{
-		Level:         zap.NewAtomicLevelAt(zap.InfoLevel),
-		Encoding:      "console",
-		EncoderConfig: stderrEncoder,
-		OutputPaths:   []string{"stderr"},
-	}).Build()
-	if err != nil {
-		return nil, errs.Wrap(err)
-	}
-
-	// Send debug to file as JSON
-	fileEncoder := zap.NewProductionEncoderConfig()
-	fileEncoder.EncodeTime = zapcore.ISO8601TimeEncoder
-	fileLog, err := (zap.Config{
-		Level:         zap.NewAtomicLevelAt(zap.DebugLevel),
-		Encoding:      "json",
-		EncoderConfig: fileEncoder,
-		OutputPaths:   []string{"file://" + logsPath},
-	}).Build()
-	if err != nil {
-		return nil, errs.Wrap(err)
-	}
-
-	log := zap.New(zapcore.NewTee(stderrLog.Core(), fileLog.Core()))
-
-	// Overwrite the latest symlink
-	if err := os.Symlink(logName, filepath.Join(logsDir, ".latest")); err != nil {
-		return nil, errs.Wrap(err)
-	}
-	if err := os.Rename(filepath.Join(logsDir, ".latest"), filepath.Join(logsDir, "latest")); err != nil {
-		return nil, errs.Wrap(err)
-	}
-
-	return log, nil
 }

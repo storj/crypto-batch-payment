@@ -10,19 +10,23 @@ import (
 
 type priceConfig struct {
 	*rootConfig
+	NodeAddress string
 }
 
 func newPriceCommand(rootConfig *rootConfig) *cobra.Command {
 	config := &priceConfig{
 		rootConfig: rootConfig,
 	}
-	return &cobra.Command{
+
+	cmd := &cobra.Command{
 		Use:   "price",
 		Short: "Print out legacy (calculated) vs EIP-1559 gas price information.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return doPrice(config)
 		},
 	}
+	registerNodeAddress(cmd, &config.NodeAddress)
+	return cmd
 }
 
 func doPrice(config *priceConfig) error {
