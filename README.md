@@ -1,4 +1,4 @@
-# Cryptohopper
+# Crypto Batch Payment
 
 A high volume ERC20 token payment application.
 
