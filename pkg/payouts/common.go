@@ -6,6 +6,6 @@ const (
 	dbName = "payouts.db"
 )
 
-func dbPathFromDir(dir string) string {
+func DbPathFromDir(dir string) string {
 	return filepath.Join(dir, dbName)
 }

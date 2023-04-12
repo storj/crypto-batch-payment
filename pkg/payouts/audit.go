@@ -83,7 +83,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 	if err != nil {
 		return nil, err
 	}
-	db, err := pipelinedb.OpenDB(ctx, dbPathFromDir(dbDir), true)
+	db, err := pipelinedb.OpenDB(ctx, DbPathFromDir(dbDir), true)
 	if err != nil {
 		return nil, err
 	}
