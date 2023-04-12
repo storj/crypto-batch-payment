@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/shopspring/decimal"
@@ -47,7 +48,7 @@ func NewPayer(
 		return nil, errs.Wrap(err)
 	}
 
-	zkSyncProvider, err := zksync2.NewDefaultProvider("https://zksync2-testnet.zksync.dev")
+	zkSyncProvider, err := zksync2.NewDefaultProvider(url)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
@@ -198,15 +199,44 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 
 func (p *Payer) SendTransaction(ctx context.Context, tx payer.Transaction) error {
 	hash, err := p.zk.SendRawTransaction(tx.Raw.([]byte))
-	if hash != tx.Hash {
-		return errs.New("Transaction hash mismatch (pre-calculated, saved in db=%s, returned from the chain=%s)", hash, tx.Hash)
+	if err != nil {
+		return err
 	}
-	return err
+	if hash.String() != tx.Hash {
+		return errs.New("Transaction hash mismatch (pre-calculated, saved in db=%s, returned from the chain=%s)", tx.Hash, hash)
+	}
+	return nil
 }
 
 func (p *Payer) CheckNonceGroup(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
-	//TODO implement me
-	panic("implement me")
+	if len(nonceGroup.Txs) != 1 {
+		return pipelinedb.TxFailed, nil, errs.New("ZkSync2 payer supports only one transaction per nonce group")
+	}
+
+	txHash := common.HexToHash(nonceGroup.Txs[0].Hash)
+	receipt, err := p.zk.GetTransactionReceipt(txHash)
+	if err != nil {
+		return pipelinedb.TxDropped, []*pipelinedb.TxStatus{}, errs.Wrap(err)
+	}
+	status := pipelinedb.TxConfirmed
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		status = pipelinedb.TxPending
+	}
+
+	return status, []*pipelinedb.TxStatus{
+		{
+			Hash:  nonceGroup.Txs[0].Hash,
+			State: status,
+			Receipt: &types.Receipt{
+				Type:              receipt.Type,
+				TxHash:            receipt.TxHash,
+				GasUsed:           receipt.GasUsed,
+				CumulativeGasUsed: receipt.CumulativeGasUsed,
+				BlockHash:         receipt.BlockHash,
+			},
+		},
+	}, err
+
 }
 
 func (p *Payer) PrintEstimate(ctx context.Context, remaining int64) error {
