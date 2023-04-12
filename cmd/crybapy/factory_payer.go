@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/spf13/cobra"
@@ -12,6 +13,7 @@ import (
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/storjtoken"
 	"storj.io/crypto-batch-payment/pkg/zksync"
+	"storj.io/crypto-batch-payment/pkg/zksync2"
 )
 
 type PayerConfig struct {
@@ -165,6 +167,17 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			spenderKey,
 			int(chainID.Int64()),
 			true,
+			maxFee)
+		if err != nil {
+			return
+		}
+	case payer.ZkSync2:
+		paymentPayer, err = zksync2.NewPayer(
+			log,
+			common.HexToAddress(config.ContractAddress),
+			nodeAddress,
+			spenderKey,
+			int(chainID.Int64()),
 			maxFee)
 		if err != nil {
 			return

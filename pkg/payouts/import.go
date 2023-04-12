@@ -18,7 +18,7 @@ func Import(ctx context.Context, dir string, csvPath string) error {
 	if err != nil {
 		return err
 	}
-	dbPath := dbPathFromDir(dbDir)
+	dbPath := DbPathFromDir(dbDir)
 
 	// Make sure the database does not already exist
 	_, err = os.Stat(dbPath)

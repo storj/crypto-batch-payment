@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
+	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -129,6 +131,16 @@ func doRun(config *runConfig) error {
 	if err != nil {
 		return err
 	}
+
+	runDir := filepath.Join(config.DataDir, config.Name)
+	dbPath := payouts.DbPathFromDir(runDir)
+
+	db, err := pipelinedb.OpenDB(context.Background(), dbPath, false)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
 	err = payouts.Run(config.Ctx,
 		log,
 		payouts.Config{
@@ -143,7 +155,9 @@ func doRun(config *runConfig) error {
 			Drain:         config.Drain,
 			NodeType:      nodeType,
 			PromptConfirm: promptConfirm,
-		}, payer)
+		},
+		db,
+		payer)
 	if err != nil {
 		return err
 	}

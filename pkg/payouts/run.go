@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"go.uber.org/zap"
-	"path/filepath"
 	"time"
 
 	"storj.io/crypto-batch-payment/pkg/payer"
@@ -35,16 +34,7 @@ type Config struct {
 	PromptConfirm func(label string) error
 }
 
-func Run(ctx context.Context, log *zap.Logger, config Config, paymentPayer payer.Payer) error {
-	runDir := filepath.Join(config.DataDir, config.Name)
-	dbPath := dbPathFromDir(runDir)
-
-	db, err := pipelinedb.OpenDB(ctx, dbPath, false)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
+func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB, paymentPayer payer.Payer) error {
 	stats, err := db.Stats(ctx)
 	if err != nil {
 		return err

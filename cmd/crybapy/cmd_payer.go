@@ -19,5 +19,6 @@ func newPayerCommand(rootConfig *rootConfig) *cobra.Command {
 		Short: "Access to the low-level payer commands",
 	}
 	cmd.AddCommand(newPayerBalanceCommand(config))
+	cmd.AddCommand(newPayerTransferCommand(config))
 	return cmd
 }

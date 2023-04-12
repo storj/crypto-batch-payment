@@ -35,6 +35,12 @@ type Quoter interface {
 	GetQuote(ctx context.Context, symbol Symbol) (*Quote, error)
 }
 
+type QuoterFunc func(ctx context.Context, symbol Symbol) (*Quote, error)
+
+func (q QuoterFunc) GetQuote(ctx context.Context, symbol Symbol) (*Quote, error) {
+	return q(ctx, symbol)
+}
+
 type Quote struct {
 	Price       decimal.Decimal
 	LastUpdated time.Time

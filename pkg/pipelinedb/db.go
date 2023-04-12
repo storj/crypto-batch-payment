@@ -43,10 +43,41 @@ func NewDB(ctx context.Context, path string) (*DB, error) {
 	return OpenDB(ctx, path, false)
 }
 
-func OpenDB(ctx context.Context, path string, readOnly bool) (_ *DB, err error) {
-	if _, err := os.Stat(path); err != nil {
-		return nil, err
+func NewInMemoryDB(ctx context.Context) (*DB, error) {
+	db, err := payoutdb.Open("sqlite3", ":memory:")
+	if err != nil {
+		return nil, errs.Wrap(err)
 	}
+	db.Hooks.Now = func() time.Time {
+		// Row timestamps are for audit only. Nanosecond precision is overkill
+		// and makes the output harder to read.
+		return time.Now().Truncate(time.Millisecond)
+	}
+	if _, err := db.Exec(db.Schema()); err != nil {
+		return nil, errs.Wrap(err)
+	}
+	if err := db.CreateNoReturn_Metadata(ctx,
+		payoutdb.Metadata_Version(dbVersion),
+		payoutdb.Metadata_Attempts(0),
+		payoutdb.Metadata_Create_Fields{},
+	); err != nil {
+		return nil, errs.Wrap(err)
+	}
+	metadata, err := db.First_Metadata(ctx)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+	if metadata == nil {
+		return nil, errs.New("database metadata is missing")
+	}
+
+	return &DB{
+		db:       db,
+		metadata: metadata,
+	}, nil
+}
+
+func OpenDB(ctx context.Context, path string, readOnly bool) (_ *DB, err error) {
 
 	db, err := openDB(path, readOnly)
 	if err != nil {
