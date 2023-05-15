@@ -12,10 +12,11 @@ const (
 	TxPending TxState = "pending"
 
 	// TxDropped represents a transaction that has not been mined and is
-	// no longer in the txpool
+	// no longer in the txpool. Safe to retry.
 	TxDropped TxState = "dropped"
 
-	// TxFailed represents a transaction that has been mined and failed.
+	// TxFailed represents a transaction that has been either mined and failed or failed during the submit.
+	// Not safe to retry.
 	TxFailed TxState = "failed"
 
 	// TxConfirmed represents a transaction that has been mined and confirmed.

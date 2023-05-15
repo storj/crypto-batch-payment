@@ -359,3 +359,14 @@ And if all are really failed, you can delete them with:
 ```
 echo "delete from tx where state='pending';" | sqlite3 payout/payouts.db
 ```
+
+## Architecture
+
+The tool imports payment requests to a local Sqlite database and process the payments from there.
+
+The scheme has the following entities:
+
+ * `metadata`: single table to store generic metadata (like the timestamp, attempts or used wallet)
+ * `payout`: the todo list of the batch payment (most important fields are `payee`, `usd`, `payout_group_id`). One line represents a payment to a single address
+ * `payout_group`: represents a group of one or more payouts. One record includes all the payments, which are included in one transaction. One payout might be part of multiple `payout_group` (for example if the payer returned with `dropped` state, the payment system may retry the payment in the next transaction...)
+ * `transaction`: metadata of the raw Ethereum transactions.
