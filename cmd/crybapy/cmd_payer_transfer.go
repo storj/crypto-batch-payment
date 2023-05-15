@@ -73,7 +73,7 @@ func doPayerTransfer(config *payerTransferConfig, spenderKeyPath string) error {
 	}
 
 	ctx := context.Background()
-	db, err := pipelinedb.NewInMemoryDB(ctx)
+	db, err := pipelinedb.OpenInMemoryDB(ctx)
 	if err != nil {
 		return err
 	}
