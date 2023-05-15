@@ -26,15 +26,13 @@ import (
 )
 
 type Payer struct {
-	log              *zap.Logger
-	maxFee           *big.Int
-	wallet           *zksync2.Wallet
-	ethereumProvider any
-	zk               *zksync2.DefaultProvider
-	signer           *zksync2.DefaultEthSigner
-	contractAddress  common.Address
-	erc20abi         abi.ABI
-	decimals         int32
+	log             *zap.Logger
+	wallet          *zksync2.Wallet
+	zk              *zksync2.DefaultProvider
+	signer          *zksync2.DefaultEthSigner
+	contractAddress common.Address
+	erc20abi        abi.ABI
+	decimals        int32
 }
 
 func NewPayer(
@@ -145,13 +143,13 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 		return tx, from, errs.Wrap(err)
 	}
 
-	chainId, err := p.zk.ChainID(ctx)
+	chainID, err := p.zk.ChainID(ctx)
 	if err != nil {
 		return tx, from, errs.Wrap(err)
 	}
 
 	data := zksync2.NewTransaction712(
-		chainId,
+		chainID,
 		big.NewInt(int64(nonce)),
 		gas,
 		zkTx.To,

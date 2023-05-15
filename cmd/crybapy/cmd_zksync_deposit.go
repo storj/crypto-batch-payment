@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net/http"
 	"strings"
@@ -238,7 +238,7 @@ func zkSyncRestAPI(ctx context.Context, nodeAddress string, path string, value i
 		return errs.New("HTTP request to ZkSync api %s is failed: %d %v", url, resp.StatusCode, err)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return errs.Wrap(err)
 	}

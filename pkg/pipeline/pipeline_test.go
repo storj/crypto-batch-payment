@@ -2,9 +2,9 @@ package pipeline
 
 import (
 	"context"
-	"io/ioutil"
+	"crypto/rand"
 	"math/big"
-	"math/rand"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -143,7 +143,7 @@ func assertPaymetGroupStatus(ctx context.Context, t *testing.T, db *pipelinedb.D
 }
 
 func createTestDB(ctx context.Context, t *testing.T, payouts []*pipelinedb.Payout) *pipelinedb.DB {
-	dir, err := ioutil.TempDir("", "payouts-pipeline-")
+	dir, err := os.MkdirTemp("", "payouts-pipeline-")
 	require.NoError(t, err)
 
 	db, err := pipelinedb.NewDB(context.Background(), filepath.Join(dir, "payouts.db"))

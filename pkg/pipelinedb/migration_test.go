@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,10 +20,10 @@ func TestMigration(t *testing.T) {
 }
 
 func testMigration(t *testing.T, version int) {
-	schema, err := ioutil.ReadFile(fmt.Sprintf("testdata/v%d.sql", version))
+	schema, err := os.ReadFile(fmt.Sprintf("testdata/v%d.sql", version))
 	require.NoError(t, err)
 
-	dir, err := ioutil.TempDir("", "")
+	dir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
