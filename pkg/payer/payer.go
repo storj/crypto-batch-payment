@@ -19,7 +19,7 @@ type Transaction struct {
 	Nonce uint64
 
 	// Raw is the internal representation of transaction data
-	Raw interface{}
+	Raw any
 }
 
 // Payer is responsible for the final payment transfer

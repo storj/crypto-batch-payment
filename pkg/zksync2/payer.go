@@ -27,7 +27,7 @@ type Payer struct {
 	log              *zap.Logger
 	maxFee           *big.Int
 	wallet           *zksync2.Wallet
-	ethereumProvider interface{}
+	ethereumProvider any
 	zk               *zksync2.DefaultProvider
 	signer           *zksync2.DefaultEthSigner
 	contractAddress  common.Address
