@@ -43,7 +43,7 @@ func NewDB(ctx context.Context, path string) (*DB, error) {
 	return OpenDB(ctx, path, false)
 }
 
-func NewInMemoryDB(ctx context.Context) (*DB, error) {
+func OpenInMemoryDB(ctx context.Context) (*DB, error) {
 	db, err := payoutdb.Open("sqlite3", ":memory:")
 	if err != nil {
 		return nil, errs.Wrap(err)
