@@ -4,6 +4,9 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
+	"math/big"
+	"strings"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -15,12 +18,11 @@ import (
 	"github.com/zksync-sdk/zksync2-go"
 	"github.com/zksync-sdk/zksync2-go/contracts/ERC20"
 	"go.uber.org/zap"
-	"math/big"
+
 	"storj.io/crypto-batch-payment/pkg/contract"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 	"storj.io/crypto-batch-payment/pkg/storjtoken"
-	"strings"
 )
 
 type Payer struct {
@@ -54,6 +56,9 @@ func NewPayer(
 	}
 
 	wallet, err := zksync2.NewWallet(ethereumSigner, zkSyncProvider)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
 
 	erc20abi, err := abi.JSON(strings.NewReader(ERC20.ERC20MetaData.ABI))
 	if err != nil {
@@ -69,7 +74,7 @@ func NewPayer(
 		erc20abi:        erc20abi,
 	}
 	p.decimals, err = p.GetTokenDecimals(context.Background())
-	return p, nil
+	return p, errs.Wrap(err)
 
 }
 
