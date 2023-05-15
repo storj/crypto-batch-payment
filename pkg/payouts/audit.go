@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	stdcsv "encoding/csv"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -83,7 +83,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 	if err != nil {
 		return nil, err
 	}
-	db, err := pipelinedb.OpenDB(ctx, DbPathFromDir(dbDir), true)
+	db, err := pipelinedb.OpenDB(ctx, DBPathFromDir(dbDir), true)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +309,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 	case payoutsConfirmed == stats.Total || receiptsForce:
 		receiptsCSV.Flush()
 		sink.ReportStatus("Writing receipts to %s...", receiptsOut)
-		if err := ioutil.WriteFile(receiptsOut, receiptsBuf.Bytes(), 0644); err != nil {
+		if err := os.WriteFile(receiptsOut, receiptsBuf.Bytes(), 0644); err != nil {
 			return nil, err
 		}
 	default:

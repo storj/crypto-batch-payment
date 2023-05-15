@@ -58,14 +58,6 @@ func convertAddress(s, which string) (common.Address, error) {
 	return address, nil
 }
 
-func convertHash(s string) (common.Hash, error) {
-	address, err := cryptohopper.HashFromString(s)
-	if err != nil {
-		return common.Hash{}, usageErr.New("invalid transaction hash: %v\n", err)
-	}
-	return address, nil
-}
-
 func convertInt(s string, base int, which string) (*big.Int, error) {
 	// use float so that we can accept scientific notation
 	f, ok := new(big.Float).SetString(s)

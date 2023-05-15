@@ -2,7 +2,6 @@ package payouts
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -18,7 +17,7 @@ func Import(ctx context.Context, dir string, csvPath string) error {
 	if err != nil {
 		return err
 	}
-	dbPath := DbPathFromDir(dbDir)
+	dbPath := DBPathFromDir(dbDir)
 
 	// Make sure the database does not already exist
 	_, err = os.Stat(dbPath)
@@ -58,7 +57,7 @@ func importPayouts(ctx context.Context, csvPath, dir string) error {
 		return errs.Wrap(err)
 	}
 
-	tmpDir, err := ioutil.TempDir(filepath.Dir(dir), "")
+	tmpDir, err := os.MkdirTemp(filepath.Dir(dir), "")
 	if err != nil {
 		return err
 	}

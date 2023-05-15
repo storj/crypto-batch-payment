@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"errors"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -788,7 +787,7 @@ type PipelineTest struct {
 }
 
 func NewPipelineTest(t *testing.T, opts ...PipelineTestOption) *PipelineTest {
-	dir, err := ioutil.TempDir("", "payouts-pipeline-")
+	dir, err := os.MkdirTemp("", "payouts-pipeline-")
 	require.NoError(t, err)
 
 	test := &PipelineTest{

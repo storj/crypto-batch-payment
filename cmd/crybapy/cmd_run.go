@@ -133,7 +133,7 @@ func doRun(config *runConfig) error {
 	}
 
 	runDir := filepath.Join(config.DataDir, config.Name)
-	dbPath := payouts.DbPathFromDir(runDir)
+	dbPath := payouts.DBPathFromDir(runDir)
 
 	db, err := pipelinedb.OpenDB(context.Background(), dbPath, false)
 	if err != nil {

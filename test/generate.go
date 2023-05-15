@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"encoding/csv"
 	"encoding/hex"
-	"io/ioutil"
 	"os"
 	"strconv"
 
@@ -31,7 +30,7 @@ func main() {
 }
 
 func writeFile(path string, data []byte, mode os.FileMode) {
-	check(ioutil.WriteFile(path, data, mode))
+	check(os.WriteFile(path, data, mode))
 }
 
 func makeAccount() (string, string) {

@@ -4,7 +4,7 @@ package csv
 import (
 	"bytes"
 	"encoding/csv"
-	"io/ioutil"
+	"os"
 	"sort"
 	"strings"
 
@@ -29,7 +29,7 @@ type Row struct {
 }
 
 func Load(path string) ([]Row, error) {
-	csvBytes, err := ioutil.ReadFile(path)
+	csvBytes, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
