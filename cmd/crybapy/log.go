@@ -25,17 +25,9 @@ func openLog(dataDir string) (*zap.Logger, error) {
 		return nil, errs.Wrap(err)
 	}
 
-	// Send info to stderr
-	stderrEncoder := zap.NewDevelopmentEncoderConfig()
-	stderrEncoder.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	stderrLog, err := (zap.Config{
-		Level:         zap.NewAtomicLevelAt(zap.InfoLevel),
-		Encoding:      "console",
-		EncoderConfig: stderrEncoder,
-		OutputPaths:   []string{"stderr"},
-	}).Build()
+	stderrLog, err := openConsoleLog()
 	if err != nil {
-		return nil, errs.Wrap(err)
+		return nil, err
 	}
 
 	// Send debug to file as JSON
@@ -62,4 +54,17 @@ func openLog(dataDir string) (*zap.Logger, error) {
 	}
 
 	return log, nil
+}
+
+// openConsoleLog creates a logger using info level + console.
+func openConsoleLog() (*zap.Logger, error) {
+	stderrEncoder := zap.NewDevelopmentEncoderConfig()
+	stderrEncoder.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	stderrLog, err := (zap.Config{
+		Level:         zap.NewAtomicLevelAt(zap.InfoLevel),
+		Encoding:      "console",
+		EncoderConfig: stderrEncoder,
+		OutputPaths:   []string{"stderr"},
+	}).Build()
+	return stderrLog, errs.Wrap(err)
 }

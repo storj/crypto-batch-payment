@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 )
 
 type payerBalanceConfig struct {
@@ -29,7 +28,7 @@ func newPayerBalanceCommand(parentConfig *payerCommandConfig) *cobra.Command {
 
 func doPayerBalance(config *payerBalanceConfig, spenderKeyPath string) error {
 
-	log, err := zap.NewDevelopment()
+	log, err := openConsoleLog()
 	if err != nil {
 		return err
 	}
