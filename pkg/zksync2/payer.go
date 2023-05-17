@@ -131,7 +131,7 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 
 	zkTx := zksync2.CreateFunctionCallTransaction(
 		from,
-		payouts[0].Payee,
+		p.contractAddress,
 		big.NewInt(0),
 		big.NewInt(0),
 		big.NewInt(0),
