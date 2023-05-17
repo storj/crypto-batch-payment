@@ -26,6 +26,9 @@ type PayerConfig struct {
 	MaxFee string
 
 	GasTipCap string
+
+	PaymasterAddress string
+	PaymasterPayload string
 }
 
 func RegisterFlags(cmd *cobra.Command, config *PayerConfig) {
@@ -59,6 +62,17 @@ func RegisterFlags(cmd *cobra.Command, config *PayerConfig) {
 		"max-fee", "",
 		"",
 		"Max fee we're willing to consider. Only applies to zksync or zkwithdraw type payment.")
+
+	cmd.Flags().StringVarP(
+		&config.PaymasterAddress,
+		"paymaster-address", "",
+		"",
+		"Address of the paymaster to be used.")
+	cmd.Flags().StringVarP(
+		&config.PaymasterPayload,
+		"paymaster-payload", "",
+		"",
+		"Payload for the paymaster to be used.")
 }
 
 func registerNodeAddress(cmd *cobra.Command, addr *string) {
@@ -172,12 +186,21 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			return
 		}
 	case payer.ZkSync2:
+		var paymasterAddress *common.Address
+		var paymasterPayload []byte
+		if config.PaymasterAddress != "" {
+			a := common.HexToAddress(config.PaymasterAddress)
+			paymasterAddress = &a
+			paymasterPayload = common.Hex2Bytes(config.PaymasterPayload)
+		}
 		paymentPayer, err = zksync2.NewPayer(
 			log,
 			common.HexToAddress(config.ContractAddress),
 			nodeAddress,
 			spenderKey,
 			int(chainID.Int64()),
+			paymasterAddress,
+			paymasterPayload,
 			maxFee)
 		if err != nil {
 			return

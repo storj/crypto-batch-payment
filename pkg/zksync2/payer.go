@@ -26,13 +26,15 @@ import (
 )
 
 type Payer struct {
-	log             *zap.Logger
-	wallet          *zksync2.Wallet
-	zk              *zksync2.DefaultProvider
-	signer          *zksync2.DefaultEthSigner
-	contractAddress common.Address
-	erc20abi        abi.ABI
-	decimals        int32
+	log              *zap.Logger
+	wallet           *zksync2.Wallet
+	zk               *zksync2.DefaultProvider
+	signer           *zksync2.DefaultEthSigner
+	contractAddress  common.Address
+	erc20abi         abi.ABI
+	decimals         int32
+	paymasterAddress *common.Address
+	paymasterPayload []byte
 }
 
 func NewPayer(
@@ -41,6 +43,8 @@ func NewPayer(
 	url string,
 	key *ecdsa.PrivateKey,
 	chainID int,
+	paymasterAddress *common.Address,
+	paymasterPayload []byte,
 	maxFee *big.Int) (*Payer, error) {
 
 	ethereumSigner, err := zksync2.NewEthSignerFromRawPrivateKey(key.D.Bytes(), int64(chainID))
@@ -64,12 +68,14 @@ func NewPayer(
 	}
 
 	p := &Payer{
-		wallet:          wallet,
-		log:             logger,
-		zk:              zkSyncProvider,
-		signer:          ethereumSigner,
-		contractAddress: contractAddress,
-		erc20abi:        erc20abi,
+		wallet:           wallet,
+		log:              logger,
+		zk:               zkSyncProvider,
+		signer:           ethereumSigner,
+		contractAddress:  contractAddress,
+		erc20abi:         erc20abi,
+		paymasterAddress: paymasterAddress,
+		paymasterPayload: paymasterPayload,
 	}
 	p.decimals, err = p.GetTokenDecimals(context.Background())
 	return p, errs.Wrap(err)
@@ -161,6 +167,13 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 		zkTx.Eip712Meta,
 	)
 
+	if p.paymasterAddress != nil {
+		data.Meta.PaymasterParams = &zksync2.PaymasterParams{
+			Paymaster:      *p.paymasterAddress,
+			PaymasterInput: p.paymasterPayload,
+		}
+	}
+
 	domain := p.signer.GetDomain()
 
 	typedData := apitypes.TypedData{
@@ -243,6 +256,10 @@ func (p *Payer) CheckNonceGroup(ctx context.Context, nonceGroup *pipelinedb.Nonc
 }
 
 func (p *Payer) PrintEstimate(ctx context.Context, remaining int64) error {
+	if p.paymasterAddress != nil {
+		fmt.Printf("Paymaster address...........: %s\n", p.paymasterAddress)
+		fmt.Printf("Paymaster payload...........: %s\n", common.Bytes2Hex(p.paymasterPayload))
+	}
 	return nil
 }
 
