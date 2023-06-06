@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
-	"storj.io/crypto-batch-payment/pkg/storjtoken"
 
 	"github.com/spf13/cobra"
+
+	"storj.io/crypto-batch-payment/pkg/storjtoken"
 )
 
 const (
@@ -53,6 +54,7 @@ func newRootCommand() *cobra.Command {
 
 	cmd.AddCommand(newImportCommand(config))
 	cmd.AddCommand(newRunCommand(config))
+	cmd.AddCommand(newStatCommand(config))
 	cmd.AddCommand(newAuditCommand(config))
 	cmd.AddCommand(newPriceCommand(config))
 	cmd.AddCommand(newZkSyncCommand(config))
