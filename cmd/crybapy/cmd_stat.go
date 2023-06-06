@@ -51,7 +51,7 @@ func doStat(config *statConfig) error {
 		if entry.Name() == "payouts.db" {
 			err := printFileStat(ctx, out, path)
 			if err != nil {
-				fmt.Println("Ignoring", path, err.Error())
+				_, _ = fmt.Fprintln(os.Stderr, "Ignoring", path, err.Error())
 			}
 		}
 		return nil
