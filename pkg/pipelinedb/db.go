@@ -7,12 +7,13 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"storj.io/crypto-batch-payment/pkg"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	//	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/shopspring/decimal"
 	"github.com/zeebo/errs"
 
@@ -546,6 +547,10 @@ func PayoutGroupFromRow(row *payoutdb.PayoutGroup) (*PayoutGroup, error) {
 	}, nil
 }
 
+type Receipt struct {
+	GasUsed uint64
+}
+
 type Transaction struct {
 	Hash              string
 	Owner             common.Address
@@ -557,7 +562,7 @@ type Transaction struct {
 	PayoutGroupID     int64
 	Raw               []byte
 	State             TxState
-	Receipt           *types.Receipt
+	Receipt           *Receipt
 }
 
 func TransactionsFromRows(rows []*payoutdb.Transaction) ([]*Transaction, error) {
@@ -596,12 +601,19 @@ func TransactionFromRow(row *payoutdb.Transaction) (*Transaction, error) {
 
 	raw := []byte(row.Raw)
 
-	var receipt *types.Receipt
+	var receipt *Receipt
 	if row.Receipt != nil {
-		receipt = new(types.Receipt)
-		if err := json.Unmarshal([]byte(*row.Receipt), receipt); err != nil {
+		var jsonReceipt struct {
+			GasUsed string `json:"gasUsed"`
+		}
+		if err := json.Unmarshal([]byte(*row.Receipt), &jsonReceipt); err != nil {
 			return nil, errs.New("unable to convert receipt for transaction pk %d: %v", row.Pk, err)
 		}
+		gasUsed, err := strconv.ParseUint(jsonReceipt.GasUsed, 0, 64)
+		if err != nil {
+			return nil, errs.New("unable to convert gas used for transaction pk %d: %v", row.Pk, err)
+		}
+		receipt = &Receipt{GasUsed: gasUsed}
 	}
 
 	state, ok := TxStateFromString(row.State)

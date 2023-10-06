@@ -13,6 +13,7 @@ require (
 	github.com/stretchr/testify v1.7.2
 	github.com/zeebo/errs v1.2.2
 	github.com/zeebo/errs/v2 v2.0.3
+	github.com/zeebo/sudo v1.0.2
 	github.com/zksync-sdk/zksync-sdk-go v0.0.0-20211119083613-58613b4d3d77
 	github.com/zksync-sdk/zksync2-go v0.0.0-20230317190602-e188e09f14d1
 	go.uber.org/zap v1.16.0
