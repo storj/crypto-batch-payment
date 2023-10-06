@@ -93,6 +93,7 @@ func newRunCommand(rootConfig *rootConfig) *cobra.Command {
 		"node-type", "",
 		string(pipeline.Geth),
 		"Node type (one of [geth, parity])")
+	RegisterFlags(cmd, &config.PayerConfig)
 	return cmd
 }
 
