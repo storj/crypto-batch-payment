@@ -122,7 +122,9 @@ func doRun(config *runConfig) error {
 		}
 	}
 
-	log, err := openLog(config.DataDir)
+	runDir := filepath.Join(config.DataDir, config.Name)
+
+	log, err := openLog(runDir)
 	if err != nil {
 		return err
 	}
@@ -133,9 +135,7 @@ func doRun(config *runConfig) error {
 		return err
 	}
 
-	runDir := filepath.Join(config.DataDir, config.Name)
 	dbPath := payouts.DBPathFromDir(runDir)
-
 	db, err := pipelinedb.OpenDB(context.Background(), dbPath, false)
 	if err != nil {
 		return err
