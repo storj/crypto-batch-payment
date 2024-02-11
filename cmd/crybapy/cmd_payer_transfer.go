@@ -3,15 +3,17 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 	"github.com/zeebo/errs"
+
 	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
 	"storj.io/crypto-batch-payment/pkg/payouts"
 	"storj.io/crypto-batch-payment/pkg/pipeline"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
-	"time"
 )
 
 type payerTransferConfig struct {
@@ -124,7 +126,6 @@ func doPayerTransfer(config *payerTransferConfig, spenderKeyPath string) error {
 			PipelineLimit: pipeline.DefaultLimit,
 			TxDelay:       pipeline.DefaultTxDelay,
 			Drain:         false,
-			NodeType:      pipeline.Geth,
 			PromptConfirm: promptConfirm,
 		},
 		db,

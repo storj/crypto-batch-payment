@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"storj.io/crypto-batch-payment/pkg"
+	batchpayment "storj.io/crypto-batch-payment/pkg"
 
 	"github.com/ethereum/go-ethereum/core/types"
+
 	"storj.io/crypto-batch-payment/pkg/eth"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 
@@ -907,7 +908,6 @@ func (test *PipelineTest) newPipeline(stepInCh chan chan []*pipelinedb.NonceGrou
 		Quoter:       test.Quoter,
 		DB:           test.DB,
 		Limit:        test.limit,
-		NodeType:     Geth,
 		stepInCh:     stepInCh,
 		pollInterval: pollInterval,
 	})

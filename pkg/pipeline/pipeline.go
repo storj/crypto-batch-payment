@@ -41,7 +41,7 @@ var (
 type PipelineConfig struct {
 	// Log is the logger for logging pipeline progress
 	Log *zap.Logger
-	
+
 	// Owner is the address of the account that the STORJ token will be paid
 	// from. In a Transfer-based flow, the Owner will match the address derived
 	// from the Spender key. In a TransferFrom-based flow, it will be a
@@ -70,9 +70,6 @@ type PipelineConfig struct {
 	// transactions and then halt.
 	Drain bool
 
-	// NodeType is the type of the node. It controls various internal settings.
-	NodeType NodeType
-
 	// test hook used to step the polling loop
 	stepInCh chan chan []*pipelinedb.NonceGroup
 
@@ -83,14 +80,13 @@ type PipelineConfig struct {
 type Pipeline struct {
 	log *zap.Logger
 
-	owner    common.Address
-	quoter   coinmarketcap.Quoter
-	db       *pipelinedb.DB
-	limit    int
-	txDelay  time.Duration
-	drain    bool
-	nodeType NodeType
-	payer    payer.Payer
+	owner   common.Address
+	quoter  coinmarketcap.Quoter
+	db      *pipelinedb.DB
+	limit   int
+	txDelay time.Duration
+	drain   bool
+	payer   payer.Payer
 
 	pollInterval  time.Duration
 	expectedNonce uint64
@@ -113,7 +109,6 @@ func NewPipeline(payer payer.Payer, config PipelineConfig) (*Pipeline, error) {
 		limit:        config.Limit,
 		txDelay:      config.TxDelay,
 		drain:        config.Drain,
-		nodeType:     config.NodeType,
 		pollInterval: config.pollInterval,
 		payer:        payer,
 	}, nil
@@ -124,7 +119,6 @@ func (p *Pipeline) ProcessPayouts(ctx context.Context) error {
 		zap.Int("limit", p.limit),
 		zap.String("tx-delay", p.txDelay.String()),
 		zap.Bool("drain", p.drain),
-		zap.String("node-type", p.nodeType.String()),
 	)
 
 	err := p.initPayout(ctx)
