@@ -1,12 +1,12 @@
 module storj.io/crypto-batch-payment
 
-go 1.20
+go 1.21.0
 
 require (
 	github.com/ethereum/go-ethereum v1.10.21
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/manifoldco/promptui v0.8.0
-	github.com/mattn/go-sqlite3 v2.0.3+incompatible
+	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/shopspring/decimal v1.2.0
 	github.com/spf13/cobra v1.1.3

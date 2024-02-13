@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"math/big"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -55,7 +54,6 @@ var (
 
 func TestPipelineLotsOfTransactions(t *testing.T) {
 	test := NewPipelineTest(t, WithLimit(16))
-	defer test.Close()
 
 	payees := []common.Address{
 		alice.Address,
@@ -88,7 +86,6 @@ func TestPipelineLotsOfTransactions(t *testing.T) {
 
 func TestPipelineLimits(t *testing.T) {
 	test := NewPipelineTest(t, WithLimit(2))
-	defer test.Close()
 
 	test.InitializePayoutGroups([]*pipelinedb.Payout{
 		{
@@ -264,7 +261,6 @@ func TestPipelineLimits(t *testing.T) {
 
 func TestPipelineResumption(t *testing.T) {
 	test := NewPipelineTest(t, WithLimit(2))
-	defer test.Close()
 
 	test.InitializePayoutGroups([]*pipelinedb.Payout{
 		{
@@ -385,7 +381,6 @@ func TestPipelineResumption(t *testing.T) {
 
 func TestPipelineTxFailure(t *testing.T) {
 	test := NewPipelineTest(t, WithSpender(spender))
-	defer test.Close()
 
 	test.InitializePayoutGroups([]*pipelinedb.Payout{
 		{
@@ -479,7 +474,6 @@ func TestPipelineTxFailure(t *testing.T) {
 
 func TestPipelineUsesLatestGasEstimateAndStorjPrice(t *testing.T) {
 	test := NewPipelineTest(t)
-	defer test.Close()
 
 	test.InitializePayoutGroups([]*pipelinedb.Payout{
 		{
@@ -540,7 +534,6 @@ func TestPipelineUsesLatestGasEstimateAndStorjPrice(t *testing.T) {
 func TestPipelineTransferFrom(t *testing.T) {
 	gasTipCap := big.NewInt(1)
 	test := NewPipelineTest(t, WithSpender(spender), WithGasTipCap(gasTipCap))
-	defer test.Close()
 
 	test.Approve(owner, spender, big.NewInt(1e8))
 
@@ -629,7 +622,6 @@ func TestPipelineTransferFrom(t *testing.T) {
 
 func TestPipelineChecksSTORJBalanceBeforeTransfer(t *testing.T) {
 	test := NewPipelineTest(t)
-	defer test.Close()
 
 	test.InitializePayoutGroups([]*pipelinedb.Payout{
 		{
@@ -658,7 +650,6 @@ func TestPipelineChecksSTORJBalanceBeforeTransfer(t *testing.T) {
 
 func TestPipelineChecksSTORJAllowanceBeforeTransfer(t *testing.T) {
 	test := NewPipelineTest(t, WithSpender(spender))
-	defer test.Close()
 
 	// Approve for 1/10 of a storj token. With the 1.00 price, spender will
 	// need to be approved for at least one token, which it won't have.
@@ -692,7 +683,6 @@ func TestPipelineChecksSTORJAllowanceBeforeTransfer(t *testing.T) {
 
 func TestPipelineVerySmallPayment(t *testing.T) {
 	test := NewPipelineTest(t)
-	defer test.Close()
 
 	test.InitializePayoutGroups([]*pipelinedb.Payout{
 		{
@@ -728,7 +718,6 @@ func TestPipelineVerySmallPayment(t *testing.T) {
 
 func TestPipelineTooSmallPayment(t *testing.T) {
 	test := NewPipelineTest(t)
-	defer test.Close()
 
 	test.InitializePayoutGroups([]*pipelinedb.Payout{
 		{
@@ -768,8 +757,7 @@ func WithGasTipCap(gasTipCap *big.Int) PipelineTestOption {
 
 type PipelineTest struct {
 	*testing.T
-	R   *require.Assertions
-	dir string
+	R *require.Assertions
 
 	// config
 	limit     int
@@ -788,13 +776,11 @@ type PipelineTest struct {
 }
 
 func NewPipelineTest(t *testing.T, opts ...PipelineTestOption) *PipelineTest {
-	dir, err := os.MkdirTemp("", "payouts-pipeline-")
-	require.NoError(t, err)
+	dir := t.TempDir()
 
 	test := &PipelineTest{
 		T:         t,
 		R:         require.New(t),
-		dir:       dir,
 		limit:     1,
 		gasTipCap: big.NewInt(1),
 	}
@@ -803,16 +789,11 @@ func NewPipelineTest(t *testing.T, opts ...PipelineTestOption) *PipelineTest {
 		opt(test)
 	}
 
-	// clean up the test if we fail to initialize
-	initOk := false
-	defer func() {
-		if !initOk {
-			test.Close()
-		}
-	}()
-
 	db, err := pipelinedb.NewDB(context.Background(), filepath.Join(dir, "payouts.db"))
 	test.R.NoError(err)
+	t.Cleanup(func() {
+		_ = test.DB.Close()
+	})
 
 	test.DB = db
 	test.Quoter = ethtest.NewQuoter()
@@ -825,15 +806,7 @@ func NewPipelineTest(t *testing.T, opts ...PipelineTestOption) *PipelineTest {
 	// price can be increased by 12.5 % with every block when they are more than 50% full
 	// 3x time multiplier is a safe choice to have
 	test.maxGas = new(big.Int).Mul(headBlock.BaseFee(), big.NewInt(3))
-	initOk = true
 	return test
-}
-
-func (test *PipelineTest) Close() {
-	if test.DB != nil {
-		test.DB.Close()
-	}
-	os.RemoveAll(test.dir)
 }
 
 func (test *PipelineTest) InitializePayoutGroups(payouts []*pipelinedb.Payout) {

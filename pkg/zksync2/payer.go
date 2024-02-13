@@ -230,26 +230,29 @@ func (p *Payer) CheckNonceGroup(ctx context.Context, nonceGroup *pipelinedb.Nonc
 	}
 
 	txHash := common.HexToHash(nonceGroup.Txs[0].Hash)
-	receipt, err := p.zk.GetTransactionReceipt(txHash)
+	zkReceipt, err := p.zk.GetTransactionReceipt(txHash)
 	if err != nil {
 		return pipelinedb.TxDropped, []*pipelinedb.TxStatus{}, errs.Wrap(err)
 	}
+
 	status := pipelinedb.TxConfirmed
-	if receipt.Status != types.ReceiptStatusSuccessful {
+	switch {
+	case zkReceipt == nil:
 		status = pipelinedb.TxPending
+	case zkReceipt.Status != types.ReceiptStatusSuccessful:
+		status = pipelinedb.TxFailed
+	}
+
+	var receipt *types.Receipt
+	if zkReceipt != nil {
+		receipt = &zkReceipt.Receipt
 	}
 
 	return status, []*pipelinedb.TxStatus{
 		{
-			Hash:  nonceGroup.Txs[0].Hash,
-			State: status,
-			Receipt: &types.Receipt{
-				Type:              receipt.Type,
-				TxHash:            receipt.TxHash,
-				GasUsed:           receipt.GasUsed,
-				CumulativeGasUsed: receipt.CumulativeGasUsed,
-				BlockHash:         receipt.BlockHash,
-			},
+			Hash:    nonceGroup.Txs[0].Hash,
+			State:   status,
+			Receipt: receipt,
 		},
 	}, err
 
