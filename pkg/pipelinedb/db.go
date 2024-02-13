@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"storj.io/crypto-batch-payment/pkg"
+	batchpayment "storj.io/crypto-batch-payment/pkg"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -78,7 +78,6 @@ func OpenInMemoryDB(ctx context.Context) (*DB, error) {
 }
 
 func OpenDB(ctx context.Context, path string, readOnly bool) (_ *DB, err error) {
-
 	db, err := openDB(path, readOnly)
 	if err != nil {
 		return nil, err
@@ -128,6 +127,9 @@ func OpenDB(ctx context.Context, path string, readOnly bool) (_ *DB, err error) 
 }
 
 func (db *DB) Close() error {
+	// Opportunistically checkpoint when closing the database to clean up
+	// the WAL and SHM files.
+	_, _ = db.db.Exec("PRAGMA wal_checkpoint(RESTART);")
 	return db.db.Close()
 }
 
@@ -671,7 +673,7 @@ func openDB(path string, readOnly bool) (*payoutdb.DB, error) {
 	}
 	dbURI := "file:" + path + "?_journal_mode=WAL&_foreign_keys=true&_locking_mode=EXCLUSIVE"
 	if readOnly {
-		dbURI += "&mode=ro"
+		dbURI += "&_query_only=true"
 	}
 	db, err := payoutdb.Open("sqlite3", dbURI)
 	if err != nil {
