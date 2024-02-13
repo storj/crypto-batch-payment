@@ -1,6 +1,6 @@
 module storj.io/crypto-batch-payment
 
-go 1.21
+go 1.21.0
 
 require (
 	github.com/ethereum/go-ethereum v1.10.21
