@@ -1,4 +1,4 @@
-.PHONY: all generate payouts accountant test lint
+.PHONY: all generate binary test lint
 
 all: binary
 
@@ -15,7 +15,5 @@ test: libzks-crypto.so
 	LD_LIBRARY_PATH=$(CURDIR) CGO_LDFLAGS=-L$(CURDIR) go test -race ./...
 
 lint: libzks-crypto.so
-	LD_LIBRARY_PATH=$(CURDIR) CGO_LDFLAGS=-L$(CURDIR) go run honnef.co/go/tools/cmd/staticcheck@2023.1.3 -checks all ./...
+	LD_LIBRARY_PATH=$(CURDIR) CGO_LDFLAGS=-L$(CURDIR) go run honnef.co/go/tools/cmd/staticcheck@2023.1.6 -checks all ./...
 	LD_LIBRARY_PATH=$(CURDIR) CGO_LDFLAGS=-L$(CURDIR) go vet ./...
-
-

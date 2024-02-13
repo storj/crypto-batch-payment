@@ -97,10 +97,13 @@ func printFileStat(ctx context.Context, out *csv.Writer, f string) error {
 		fmt.Sprintf("%d", okTxs),
 		fmt.Sprintf("%d", len(txs)),
 		fmt.Sprintf("%d", len(payouts)),
-		fmt.Sprintf("%s", sum),
+		sum.String(),
 		fmt.Sprintf("%d", gasUsed),
 		fmt.Sprintf("%d", avgUsedGas),
 	})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
