@@ -23,9 +23,7 @@ func testMigration(t *testing.T, version int) {
 	schema, err := os.ReadFile(fmt.Sprintf("testdata/v%d.sql", version))
 	require.NoError(t, err)
 
-	dir, err := os.MkdirTemp("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	dbPath := filepath.Join(dir, "test.db")
 

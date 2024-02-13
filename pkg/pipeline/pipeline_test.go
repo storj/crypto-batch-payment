@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"math/big"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
+
 	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
@@ -143,8 +143,7 @@ func assertPaymetGroupStatus(ctx context.Context, t *testing.T, db *pipelinedb.D
 }
 
 func createTestDB(ctx context.Context, t *testing.T, payouts []*pipelinedb.Payout) *pipelinedb.DB {
-	dir, err := os.MkdirTemp("", "payouts-pipeline-")
-	require.NoError(t, err)
+	dir := t.TempDir()
 
 	db, err := pipelinedb.NewDB(context.Background(), filepath.Join(dir, "payouts.db"))
 	require.NoError(t, err)
