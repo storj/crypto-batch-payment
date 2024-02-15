@@ -42,7 +42,7 @@ type AuditStats struct {
 func Audit(ctx context.Context, dir string, csvPath string, payerType payer.PayerType, nodeAddress string, chainID int, sink AuditSink, receiptsOut string, receiptsForce bool) (*AuditStats, error) {
 	var auditor payer.Auditor
 	switch payerType {
-	case payer.Eth, payer.Polygon:
+	case payer.Eth, payer.Polygon, payer.ZkSync2:
 		client, err := ethclient.Dial(nodeAddress)
 		if err != nil {
 			return nil, errs.New("Failed to dial node %q: %v\n", nodeAddress, err)
