@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 	"time"
+
+	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 
 	"github.com/spf13/cobra"
 	"github.com/zeebo/errs"
@@ -28,7 +29,6 @@ type runConfig struct {
 	TxDelay                 time.Duration
 	SkipConfirmation        bool
 	Drain                   bool
-	NodeType                string
 }
 
 func newRunCommand(rootConfig *rootConfig) *cobra.Command {
@@ -88,22 +88,11 @@ func newRunCommand(rootConfig *rootConfig) *cobra.Command {
 		"drain", "",
 		false,
 		"Drain existing transactions only")
-	cmd.Flags().StringVarP(
-		&config.NodeType,
-		"node-type", "",
-		string(pipeline.Geth),
-		"Node type (one of [geth, parity])")
 	RegisterFlags(cmd, &config.PayerConfig)
 	return cmd
 }
 
 func doRun(config *runConfig) error {
-
-	nodeType, err := pipeline.NodeTypeFromString(config.NodeType)
-	if err != nil {
-		return err
-	}
-
 	coinMarketCapAPIKey, err := loadFirstLine(config.CoinMarketCapAPIKeyPath)
 	if err != nil {
 		return errs.New("failed to load CoinMarketCap key: %v\n", err)
@@ -154,7 +143,6 @@ func doRun(config *runConfig) error {
 			PipelineLimit: config.PipelineLimit,
 			TxDelay:       config.TxDelay,
 			Drain:         config.Drain,
-			NodeType:      nodeType,
 			PromptConfirm: promptConfirm,
 		},
 		db,

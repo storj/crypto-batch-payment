@@ -881,7 +881,6 @@ func (test *PipelineTest) newPipeline(stepInCh chan chan []*pipelinedb.NonceGrou
 		Quoter:       test.Quoter,
 		DB:           test.DB,
 		Limit:        test.limit,
-		NodeType:     Geth,
 		stepInCh:     stepInCh,
 		pollInterval: pollInterval,
 	})

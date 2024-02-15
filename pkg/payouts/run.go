@@ -3,8 +3,9 @@ package payouts
 import (
 	"context"
 	"fmt"
-	"go.uber.org/zap"
 	"time"
+
+	"go.uber.org/zap"
 
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
@@ -28,8 +29,6 @@ type Config struct {
 	TxDelay time.Duration
 
 	Drain bool
-
-	NodeType pipeline.NodeType
 
 	PromptConfirm func(label string) error
 }
@@ -81,8 +80,6 @@ func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB,
 	if err != nil {
 		return err
 	}
-	fmt.Println()
-	fmt.Println("Node Type:", config.NodeType)
 
 	if config.Drain {
 		if err := config.PromptConfirm("Drain"); err != nil {
@@ -95,13 +92,12 @@ func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB,
 	}
 
 	p, err := pipeline.NewPipeline(paymentPayer, pipeline.PipelineConfig{
-		Log:      log,
-		Quoter:   config.Quoter,
-		DB:       db,
-		Limit:    config.PipelineLimit,
-		Drain:    config.Drain,
-		NodeType: config.NodeType,
-		TxDelay:  config.TxDelay,
+		Log:     log,
+		Quoter:  config.Quoter,
+		DB:      db,
+		Limit:   config.PipelineLimit,
+		Drain:   config.Drain,
+		TxDelay: config.TxDelay,
 	})
 	if err != nil {
 		return err
