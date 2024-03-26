@@ -2,13 +2,15 @@ package main
 
 import (
 	"context"
+	"math/big"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/spf13/cobra"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
-	"math/big"
+
 	"storj.io/crypto-batch-payment/pkg/eth"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/storjtoken"
@@ -149,7 +151,6 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 		defer client.Close()
 
 		paymentPayer, err = eth.NewEthPayer(ctx,
-			log,
 			client,
 			contractAddress,
 			owner,
@@ -164,7 +165,6 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 	case payer.ZkSync:
 		paymentPayer, err = zksync.NewPayer(
 			ctx,
-			log,
 			nodeAddress,
 			spenderKey,
 			int(chainID.Int64()),
@@ -176,7 +176,6 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 	case payer.ZkWithdraw:
 		paymentPayer, err = zksync.NewPayer(
 			ctx,
-			log,
 			nodeAddress,
 			spenderKey,
 			int(chainID.Int64()),
@@ -194,7 +193,6 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			paymasterPayload = common.Hex2Bytes(config.PaymasterPayload)
 		}
 		paymentPayer, err = zksync2.NewPayer(
-			log,
 			common.HexToAddress(config.ContractAddress),
 			nodeAddress,
 			spenderKey,
@@ -206,7 +204,7 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			return
 		}
 	case payer.Sim:
-		paymentPayer, err = payer.NewSimPayer(log)
+		paymentPayer, err = payer.NewSimPayer()
 		if err != nil {
 			return
 		}

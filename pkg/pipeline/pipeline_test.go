@@ -198,8 +198,8 @@ func (t *TestPayer) NextNonce(ctx context.Context) (uint64, error) {
 	return ret, nil
 }
 
-func (t *TestPayer) IsPreconditionMet(ctx context.Context) (bool, error) {
-	return true, nil
+func (t *TestPayer) CheckPreconditions(ctx context.Context) ([]string, error) {
+	return nil, nil
 }
 
 func (t *TestPayer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
@@ -221,11 +221,11 @@ func (t *TestPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, p
 
 }
 
-func (t *TestPayer) SendTransaction(ctx context.Context, tx payer.Transaction) error {
+func (t *TestPayer) SendTransaction(ctx context.Context, log *zap.Logger, tx payer.Transaction) error {
 	return t.sendTransactionHandler(ctx, tx)
 }
 
-func (t *TestPayer) CheckNonceGroup(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
+func (t *TestPayer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
 	return t.checkNonceGroupHandler(ctx, nonceGroup, checkOnly)
 }
 

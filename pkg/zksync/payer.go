@@ -14,13 +14,13 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/zeebo/errs/v2"
 	"go.uber.org/zap"
+
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 	"storj.io/crypto-batch-payment/pkg/storjtoken"
 )
 
 type Payer struct {
-	log      *zap.Logger
 	client   *ZkClient
 	token    Token
 	withdraw bool // set to true to pay on l1 (from l2!)
@@ -33,7 +33,6 @@ var (
 
 func NewPayer(
 	ctx context.Context,
-	logger *zap.Logger,
 	url string,
 	key *ecdsa.PrivateKey,
 	chainID int,
@@ -51,7 +50,6 @@ func NewPayer(
 	}
 
 	return &Payer{
-		log:      logger,
 		client:   &client,
 		token:    token,
 		withdraw: withdraw,
@@ -63,8 +61,8 @@ func (z Payer) NextNonce(ctx context.Context) (uint64, error) {
 	return z.client.GetNonce(ctx)
 }
 
-func (z Payer) IsPreconditionMet(ctx context.Context) (bool, error) {
-	return true, nil
+func (z Payer) CheckPreconditions(ctx context.Context) ([]string, error) {
+	return nil, nil
 }
 
 func (z Payer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
@@ -93,7 +91,7 @@ func (z Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payout
 		if z.maxFee == nil || z.maxFee.Cmp(fee) >= 0 {
 			break
 		}
-		z.log.Sugar().Infof("current fee (%s) greater than max fee (%s), sleeping", fee.String(), z.maxFee.String())
+		log.Sugar().Infof("current fee (%s) greater than max fee (%s), sleeping", fee.String(), z.maxFee.String())
 		time.Sleep(5 * time.Second)
 	}
 
@@ -117,7 +115,7 @@ func (z Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payout
 
 }
 
-func (z Payer) SendTransaction(ctx context.Context, t payer.Transaction) error {
+func (z Payer) SendTransaction(ctx context.Context, log *zap.Logger, t payer.Transaction) error {
 	switch tx := t.Raw.(type) {
 	case TxWithEthSignature:
 		txHash, err := z.client.SubmitTransaction(ctx, tx)
@@ -133,7 +131,7 @@ func (z Payer) SendTransaction(ctx context.Context, t payer.Transaction) error {
 	}
 }
 
-func (z Payer) CheckNonceGroup(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
+func (z Payer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
 	if len(nonceGroup.Txs) != 1 {
 		return pipelinedb.TxFailed, nil, errs.Errorf("noncegroup should have only 1 transaction, not %d", len(nonceGroup.Txs))
 	}

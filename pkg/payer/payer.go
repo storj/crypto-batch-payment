@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
+
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 )
 
@@ -27,8 +28,8 @@ type Payer interface {
 	// NextNonce queries chain for the next available nonce value.
 	NextNonce(ctx context.Context) (uint64, error)
 
-	// IsPreconditionMet checks if transaction can be initiated. If return is false pipeline will try again after a short sleep.
-	IsPreconditionMet(ctx context.Context) (bool, error)
+	// CheckPreconditions checks if transaction can be initiated. If unmet preconditions are returned then pipeline will try again after a short sleep.
+	CheckPreconditions(ctx context.Context) (unmet []string, err error)
 
 	// GetTokenBalance returns with the available token balance in real value (with decimals)
 	GetTokenBalance(ctx context.Context) (*big.Int, error)
@@ -40,10 +41,10 @@ type Payer interface {
 	CreateRawTransaction(ctx context.Context, log *zap.Logger, payouts []*pipelinedb.Payout, nonce uint64, storjPrice decimal.Decimal) (tx Transaction, from common.Address, err error)
 
 	// SendTransaction submits the transaction created earlier.
-	SendTransaction(ctx context.Context, tx Transaction) error
+	SendTransaction(ctx context.Context, log *zap.Logger, tx Transaction) error
 
 	// CheckNonceGroup returns with the status of the submitted transactions.
-	CheckNonceGroup(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error)
+	CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error)
 
 	// PrintEstimate prints out additional information about the planned actions.
 	PrintEstimate(ctx context.Context, remaining int64) error

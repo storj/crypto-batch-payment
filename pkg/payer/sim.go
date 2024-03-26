@@ -7,10 +7,10 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/shopspring/decimal"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
+
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 )
 
@@ -20,7 +20,6 @@ var (
 )
 
 type SimPayer struct {
-	log  *zap.Logger
 	from common.Address
 }
 
@@ -29,7 +28,7 @@ func (s *SimPayer) PrintEstimate(ctx context.Context, remaining int64) error {
 	return nil
 }
 
-func NewSimPayer(log *zap.Logger) (*SimPayer, error) {
+func NewSimPayer() (*SimPayer, error) {
 	hash := make([]byte, 20)
 	_, err := rand.Read(hash)
 	if err != nil {
@@ -37,7 +36,6 @@ func NewSimPayer(log *zap.Logger) (*SimPayer, error) {
 	}
 	return &SimPayer{
 		from: common.BytesToAddress(hash),
-		log:  log,
 	}, nil
 }
 
@@ -45,8 +43,8 @@ func (s *SimPayer) NextNonce(ctx context.Context) (uint64, error) {
 	return uint64(0), nil
 }
 
-func (s *SimPayer) IsPreconditionMet(ctx context.Context) (bool, error) {
-	return true, nil
+func (s *SimPayer) CheckPreconditions(ctx context.Context) ([]string, error) {
+	return nil, nil
 }
 
 func (s *SimPayer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
@@ -73,12 +71,12 @@ func (s *SimPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, pa
 	}, s.from, nil
 }
 
-func (s *SimPayer) SendTransaction(ctx context.Context, tx Transaction) error {
+func (s *SimPayer) SendTransaction(ctx context.Context, log *zap.Logger, tx Transaction) error {
 	log.Info("Sending transaction")
 	return nil
 }
 
-func (s *SimPayer) CheckNonceGroup(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
+func (s *SimPayer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
 	if len(nonceGroup.Txs) != 1 {
 		return pipelinedb.TxFailed, nil, errs.New("noncegroup should have only 1 transaction, not %d", len(nonceGroup.Txs))
 	}
