@@ -866,7 +866,6 @@ func (test *PipelineTest) newPipeline(stepInCh chan chan []*pipelinedb.NonceGrou
 		spenderKey = test.spender.Key
 	}
 	payer, err := eth.NewEthPayer(context.Background(),
-		zaptest.NewLogger(test),
 		test.Client,
 		test.ContractAddress,
 		owner.Address,

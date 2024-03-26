@@ -12,9 +12,11 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
-	"storj.io/crypto-batch-payment/pkg"
+
+	batchpayment "storj.io/crypto-batch-payment/pkg"
 
 	"github.com/zeebo/errs/v2"
+
 	"storj.io/crypto-batch-payment/pkg/contract"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
@@ -22,8 +24,6 @@ import (
 )
 
 type EthPayer struct {
-	log *zap.Logger
-
 	client        *ethclient.Client
 	contract      *contract.Token
 	owner         common.Address
@@ -42,7 +42,6 @@ var (
 )
 
 func NewEthPayer(ctx context.Context,
-	logger *zap.Logger,
 	client *ethclient.Client,
 	contractAddress common.Address,
 	owner common.Address,
@@ -77,7 +76,6 @@ func NewEthPayer(ctx context.Context,
 	}
 
 	return &EthPayer{
-		log:           logger,
 		owner:         owner,
 		gasTipCap:     gasTipCap,
 		maxGas:        maxGas,
@@ -93,20 +91,20 @@ func (e *EthPayer) NextNonce(ctx context.Context) (uint64, error) {
 	return e.client.NonceAt(ctx, e.from, nil)
 }
 
-func (e *EthPayer) IsPreconditionMet(ctx context.Context) (bool, error) {
+func (e *EthPayer) CheckPreconditions(ctx context.Context) (unmet []string, err error) {
 	lastBlock, err := e.client.BlockByNumber(ctx, nil)
 	if err != nil {
-		return false, errs.Wrap(err)
+		return nil, errs.Wrap(err)
 	}
 
 	// max gas should be higher than the base fee + tip
 	if e.maxGas.Cmp(new(big.Int).Add(lastBlock.BaseFee(), e.gasTipCap)) < 0 {
-		e.log.Sugar().Warnf("base fee in last block is %s, together with the tip %s it's larger "+
-			"than the max allowed gas price %s. "+
-			"sleeping for 5 seconds", lastBlock.BaseFee(), e.gasTipCap, e.maxGas)
-		return false, nil
+		unmet = append(unmet, fmt.Sprintf(
+			"the base fee of the last block (%s) plus the tip (%s) is larger than the max allowed gas price (%s)",
+			lastBlock.BaseFee(), e.gasTipCap, e.maxGas))
 	}
-	return true, nil
+
+	return unmet, nil
 
 }
 
@@ -197,7 +195,7 @@ func (e *EthPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, pa
 	}, e.from, nil
 }
 
-func (e *EthPayer) SendTransaction(ctx context.Context, t payer.Transaction) error {
+func (e *EthPayer) SendTransaction(ctx context.Context, log *zap.Logger, t payer.Transaction) error {
 	switch tx := t.Raw.(type) {
 	case *types.Transaction:
 		return errs.Wrap(e.client.SendTransaction(ctx, tx))
@@ -216,14 +214,8 @@ func (e *EthPayer) EstimatedGasFee(ctx context.Context) (*big.Int, error) {
 	return baseGasFee, nil
 }
 
-func (e *EthPayer) CheckNonceGroup(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
-	log := e.log.With(zap.Uint64("nonce", nonceGroup.Nonce), zap.Int64("payout-group-id", nonceGroup.PayoutGroupID))
-
-	log.Debug("Checking nonce group",
-		zap.Int("txs", len(nonceGroup.Txs)),
-	)
-
-	transactions, err := e.getNonceGroupTxStatus(ctx, nonceGroup)
+func (e *EthPayer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
+	transactions, err := e.getNonceGroupTxStatus(ctx, log, nonceGroup)
 	if err != nil {
 		return "", transactions.all, err
 	}
@@ -245,7 +237,7 @@ func (e *EthPayer) CheckNonceGroup(ctx context.Context, nonceGroup *pipelinedb.N
 				zap.Int("dropped", len(transactions.dropped)))
 			return "", transactions.all, errs.Errorf("re-send aborted due to previous nonce group failure")
 		}
-		e.log.Warn("All transactions dropped; sending another", zap.Int("dropped", len(transactions.dropped)))
+		log.Warn("All transactions dropped; sending another", zap.Int("dropped", len(transactions.dropped)))
 		return pipelinedb.TxDropped, transactions.all, nil
 	}
 
@@ -280,7 +272,7 @@ type nonceGroupTransactions struct {
 	other   []*pipelinedb.TxStatus
 }
 
-func (e *EthPayer) getNonceGroupTxStatus(ctx context.Context, nonceGroup *pipelinedb.NonceGroup) (txs nonceGroupTransactions, err error) {
+func (e *EthPayer) getNonceGroupTxStatus(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup) (txs nonceGroupTransactions, err error) {
 	var all, dropped, other []*pipelinedb.TxStatus
 	counts := struct {
 		pending   int
@@ -292,14 +284,14 @@ func (e *EthPayer) getNonceGroupTxStatus(ctx context.Context, nonceGroup *pipeli
 	for _, tx := range nonceGroup.Txs {
 		status, err := e.getTransactionStatus(ctx, tx.Hash)
 		if err != nil {
-			e.log.Error("Unable to get transaction status",
+			log.Error("Unable to get transaction status",
 				zap.String("hash", tx.Hash),
 				zap.Error(err),
 			)
 			return nonceGroupTransactions{}, err
 		}
 
-		e.log.Debug("Transaction status",
+		log.Debug("Transaction status",
 			zap.Uint64("nonce", tx.Nonce),
 			zap.String("hash", tx.Hash),
 			zap.String("state", string(status.State)),
@@ -348,9 +340,9 @@ func (e *EthPayer) getNonceGroupTxStatus(ctx context.Context, nonceGroup *pipeli
 	}
 
 	if allGood {
-		e.log.Debug("Nonce group status", fields...)
+		log.Debug("Nonce group status", fields...)
 	} else {
-		e.log.Warn("Nonce group status", fields...)
+		log.Warn("Nonce group status", fields...)
 	}
 
 	return nonceGroupTransactions{
