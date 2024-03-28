@@ -207,11 +207,13 @@ func (p *Pipeline) payoutStep(ctx context.Context) (bool, error) {
 		var nextNonce uint64
 		if len(p.nonceGroups) > 0 {
 			nextNonce = p.nonceGroups[len(p.nonceGroups)-1].Nonce + 1
+			p.log.Info("Nonce from nonce group", zap.Uint64("nextNonce", nextNonce))
 		} else {
 			nextNonce, err = p.payer.NextNonce(ctx)
 			if err != nil {
 				return true, errs.New("unable to obtain next nonce from blockchain: %v", err)
 			}
+			p.log.Info("Nonce from chain", zap.Uint64("nextNonce", nextNonce))
 			// NonceAt can return an earlier nonce than expected if the
 			// just-mined block cleared out the pipeline but the timing is
 			// weird enough for the node to not return right nonce based on
