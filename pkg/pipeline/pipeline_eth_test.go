@@ -1015,12 +1015,6 @@ func (test *PipelineTest) commit() {
 	test.Logf("Block %v committed (%d transactions, %d still pending)", hash, count, test.pendingTransactionCount())
 }
 
-func (test *PipelineTest) rollback() {
-	test.Backend.Rollback()
-
-	test.Logf("Transactions rolled back (%d pending)", test.pendingTransactionCount())
-}
-
 func (test *PipelineTest) pendingTransactionCount() uint {
 	pending, err := test.Client.PendingTransactionCount(context.Background())
 	test.R.NoError(err)
