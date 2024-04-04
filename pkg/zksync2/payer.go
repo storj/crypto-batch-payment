@@ -143,8 +143,8 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 		CallMsg: ethereum.CallMsg{
 			From:      from,
 			To:        &p.contractAddress,
-			Gas:       0,                     // estimated below
-			GasTipCap: big.NewInt(100000000), // TODO: Estimate correct one
+			Gas:       0,             // estimated below
+			GasTipCap: big.NewInt(0), // TODO: Estimate correct one
 			GasFeeCap: gasPrice,
 			Value:     nil,
 			Data:      packedData,
