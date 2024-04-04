@@ -10,15 +10,17 @@ import (
 
 	batchpayment "storj.io/crypto-batch-payment/pkg"
 
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient/simulated"
 
 	"storj.io/crypto-batch-payment/pkg/eth"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 
@@ -29,7 +31,6 @@ import (
 
 const (
 	initialStorj int64 = 1e11
-	startingETH  int64 = 1e9
 )
 
 var (
@@ -141,48 +142,31 @@ func TestPipelineLimits(t *testing.T) {
 			tx2Hash = pipeline[1].Txs[0].Hash
 			test.R.Nil(test.FetchPayoutGroupFinalTxHash(2))
 
-			// Commit tx1
-			test.commit(tx1Hash)
+			// Commit tx1 and tx2
+			test.commit()
 			return false, nil
 		case 2:
 			test.R.Len(pipeline, 2)
 
 			// Pipeline slot 0 should be nonce 0 with no transactions, since
-			// tx1 was confirmed. Payout group 1 final hash should be tx1.
+			// tx3 was confirmed. Payout group 1 final hash should be tx1.
 			test.ValidatePipelineSlot(pipeline[0], 0, 1)
 			test.R.Equal(tx1Hash, test.FetchPayoutGroupFinalTxHash(1).String())
 			test.R.Equal(pipelinedb.TxConfirmed, test.FetchTransactionState(tx1Hash))
 
-			// Pipeline slot 1 should be unchanged.
-			test.ValidatePipelineSlot(pipeline[1], 1, 2, pipelinedb.TxPending)
-			test.R.Equal(tx2Hash, pipeline[1].Txs[0].Hash)
-			test.R.Nil(test.FetchPayoutGroupFinalTxHash(2))
-
-			// Commit tx2
-			test.commit(tx2Hash)
+			// Pipeline slot 1 should be nonce 1 with no transactions, since
+			// tx4 was confirmed. Payout group 2 final hash should be tx2.
+			test.ValidatePipelineSlot(pipeline[1], 1, 2)
+			test.R.Equal(tx2Hash, test.FetchPayoutGroupFinalTxHash(2).String())
+			test.R.Equal(pipelinedb.TxConfirmed, test.FetchTransactionState(tx2Hash))
 			return false, nil
 		case 3:
 			test.R.Len(pipeline, 2)
 
-			// Pipeline slot 0 should now be nonce 1 with no transactions, since
-			// tx2 was confirmed. Payout group 2 final hash should be tx2.
-			test.ValidatePipelineSlot(pipeline[0], 1, 2)
-			test.R.Equal(tx2Hash, test.FetchPayoutGroupFinalTxHash(2).String())
-			test.R.Equal(pipelinedb.TxConfirmed, test.FetchTransactionState(tx2Hash))
-
-			// Pipeline slot 1 should be nonce 2 with a pending transaction
+			// Pipeline slot 0 should be nonce 2 with a pending transaction
 			// (tx3) for payout group 3.
-			test.ValidatePipelineSlot(pipeline[1], 2, 3, pipelinedb.TxPending)
-			tx3Hash = pipeline[1].Txs[0].Hash
-			test.R.Nil(test.FetchPayoutGroupFinalTxHash(3))
-
-			return false, nil
-		case 4:
-			test.R.Len(pipeline, 2)
-
-			// Pipeline slot 0 should now be nonce 2, which is unchanged.
 			test.ValidatePipelineSlot(pipeline[0], 2, 3, pipelinedb.TxPending)
-			test.R.Equal(tx3Hash, pipeline[0].Txs[0].Hash)
+			tx3Hash = pipeline[0].Txs[0].Hash
 			test.R.Nil(test.FetchPayoutGroupFinalTxHash(3))
 
 			// Pipeline slot 1 should be nonce 3 with a pending transaction
@@ -192,7 +176,7 @@ func TestPipelineLimits(t *testing.T) {
 			test.R.Nil(test.FetchPayoutGroupFinalTxHash(4))
 
 			return false, nil
-		case 5:
+		case 4:
 			test.R.Len(pipeline, 2)
 
 			// Assert that pipeline slot 0 remains unchanged
@@ -206,9 +190,9 @@ func TestPipelineLimits(t *testing.T) {
 			test.R.Nil(test.FetchPayoutGroupFinalTxHash(4))
 
 			// Commit both tx3 and tx4
-			test.commit(tx3Hash, tx4Hash)
+			test.commit()
 			return false, nil
-		case 6:
+		case 5:
 			test.R.Len(pipeline, 2)
 
 			// Pipeline slot 0 should be nonce 2 with no transactions, since
@@ -224,7 +208,7 @@ func TestPipelineLimits(t *testing.T) {
 			test.R.Equal(pipelinedb.TxConfirmed, test.FetchTransactionState(tx4Hash))
 
 			return false, nil
-		case 7:
+		case 6:
 			test.R.Len(pipeline, 1)
 
 			// Pipeline slot 0 should be nonce 4 with a pending transaction
@@ -233,9 +217,9 @@ func TestPipelineLimits(t *testing.T) {
 			tx5Hash = pipeline[0].Txs[0].Hash
 			test.R.Nil(test.FetchPayoutGroupFinalTxHash(5))
 
-			test.commit(tx5Hash)
+			test.commit()
 			return false, nil
-		case 8:
+		case 7:
 			test.R.Len(pipeline, 1)
 
 			// Pipeline slot 0 should be nonce 4 with no transactions, since
@@ -323,7 +307,7 @@ func TestPipelineResumption(t *testing.T) {
 			test.R.Len(pipeline[1].Txs, 1)
 			test.R.Equal(tx2Hash, pipeline[1].Txs[0].Hash)
 
-			test.commit(tx1Hash)
+			test.commit()
 
 			// Cancel processing
 			cancel()
@@ -343,12 +327,9 @@ func TestPipelineResumption(t *testing.T) {
 			test.R.Equal(uint64(0), pipeline[0].Nonce)
 			test.R.Empty(pipeline[0].Txs, 0)
 
-			// Assert nonce group 2 is tracking the same pending transaction
+			// Assert nonce group 2 transaction has been confirmed
 			test.R.Equal(uint64(1), pipeline[1].Nonce)
-			test.R.Len(pipeline[1].Txs, 1)
-			test.R.Equal(tx2Hash, pipeline[1].Txs[0].Hash)
-
-			test.commit(tx2Hash)
+			test.R.Empty(pipeline[1].Txs, 1)
 
 			// Cancel processing
 			cancel()
@@ -362,12 +343,7 @@ func TestPipelineResumption(t *testing.T) {
 	test.ProcessPayouts(func(step int, pipeline []*pipelinedb.NonceGroup, cancel func()) (bool, error) {
 		switch step {
 		case 0:
-			test.R.Len(pipeline, 1)
-
-			// Assert nonce group 1 transaction has been confirmed
-			test.R.Equal(uint64(1), pipeline[0].Nonce)
-			test.R.Empty(pipeline[0].Txs, 0)
-
+			test.R.Len(pipeline, 0)
 			return true, nil
 		default:
 			test.Fatalf("not expecting step %d", step)
@@ -380,19 +356,23 @@ func TestPipelineResumption(t *testing.T) {
 }
 
 func TestPipelineTxFailure(t *testing.T) {
-	test := NewPipelineTest(t, WithSpender(spender))
+	test := NewPipelineTest(t, WithSpender(spender), WithLimit(2))
 
 	test.InitializePayoutGroups([]*pipelinedb.Payout{
 		{
 			Payee: alice.Address,
 			USD:   decimal.RequireFromString("1.00"),
 		},
+		{
+			Payee: bob.Address,
+			USD:   decimal.RequireFromString("1.00"),
+		},
 	})
 	test.SetStorjPrice("1.00")
 
-	// This must be greater than 1e8 otherwise for some reason setting the approved
-	// amount to zero inside of the payouts process fails.
-	test.Approve(owner, spender, big.NewInt(1e8+1))
+	// Approve only one STORJ token worth. This will cause the second payout
+	// to fail due to insufficient allowance.
+	test.Approve(owner, spender, big.NewInt(1e8))
 
 	var (
 		txHash1st string
@@ -406,20 +386,22 @@ func TestPipelineTxFailure(t *testing.T) {
 			test.R.Empty(pipeline)
 			return false, nil
 		case 1:
-			test.R.Len(pipeline, 1)
+			test.R.Len(pipeline, 2)
 
+			// First transaction should succeed, because there is sufficient
+			// allowance, but the second will fail.
 			test.R.Equal(uint64(0), pipeline[0].Nonce)
 			test.R.Len(pipeline[0].Txs, 1)
 			txHash1st = pipeline[0].Txs[0].Hash
 
-			// Before committing the transaction, remove the spender allowance
-			// so that the transaction will fail.
-			test.Approve(owner, spender, zero)
+			// First transaction should succeed, because there is sufficient
+			// allowance, but the second will fail.
+			test.R.Equal(uint64(1), pipeline[1].Nonce)
+			test.R.Len(pipeline[1].Txs, 1)
+			txHash2nd = pipeline[1].Txs[0].Hash
 
-			// Commit the transaction. This transaction should fail because
-			// the spender account has too little allowance
-			test.commit(txHash1st)
-
+			// Commit the transaction. The first transaction will be committed.
+			test.commit()
 			return true, errors.New("One or more transactions failed, possibly due to insufficient balances")
 		default:
 			test.Fatalf("not expecting step %d", step)
@@ -427,8 +409,9 @@ func TestPipelineTxFailure(t *testing.T) {
 		}
 	})
 
-	// The original transaction should be marked as failed
-	test.R.Equal(pipelinedb.TxFailed, test.FetchTransactionState(txHash1st))
+	// The original transaction should succeed
+	test.R.Equal(pipelinedb.TxConfirmed, test.FetchTransactionState(txHash1st))
+	test.R.Equal(pipelinedb.TxFailed, test.FetchTransactionState(txHash2nd))
 
 	// Re-approve the spender to send one token
 	test.Approve(owner, spender, big.NewInt(1e8))
@@ -444,24 +427,23 @@ func TestPipelineTxFailure(t *testing.T) {
 			test.R.Len(pipeline, 1)
 
 			// Assert that another transaction was sent under a new nonce
-			test.R.Equal(uint64(1), pipeline[0].Nonce)
+			test.R.Equal(uint64(2), pipeline[0].Nonce)
 			test.R.Len(pipeline[0].Txs, 1)
 			txHash2nd = pipeline[0].Txs[0].Hash
 			test.R.Equal(pipelinedb.TxPending, test.FetchTransactionState(txHash2nd))
 
-			// Commit tx2
-			test.commit(txHash2nd)
+			// Commit the transaction
+			test.commit()
 			return false, nil
 		case 2:
 			test.R.Len(pipeline, 1)
 
-			// Assert that tx2 confirmed state has been recorded and that that
-			// the it has been removed from the nonce group. Assert that the
-			// payout group final transaction hash has been recorded.
+			// Assert that tx2 confirmed state has been recorded and that it
+			// has been removed from the nonce group. Assert that the payout
+			// group final transaction hash has been recorded.
 			test.R.Empty(pipeline[0].Txs)
 			test.R.Equal(pipelinedb.TxConfirmed, test.FetchTransactionState(txHash2nd))
-			test.R.Equal(txHash2nd, test.FetchPayoutGroupFinalTxHash(1).String())
-
+			test.R.Equal(txHash2nd, test.FetchPayoutGroupFinalTxHash(2).String())
 			return true, nil
 		default:
 			test.Fatalf("not expecting step %d", step)
@@ -470,6 +452,7 @@ func TestPipelineTxFailure(t *testing.T) {
 	})
 
 	test.RequireEqualBig(big.NewInt(1e8), test.STORJBalance(alice.Address))
+	test.RequireEqualBig(big.NewInt(1e8), test.STORJBalance(bob.Address))
 }
 
 func TestPipelineUsesLatestGasEstimateAndStorjPrice(t *testing.T) {
@@ -503,7 +486,7 @@ func TestPipelineUsesLatestGasEstimateAndStorjPrice(t *testing.T) {
 
 			test.SetStorjPrice("10.00")
 
-			test.commit(tx.Hash)
+			test.commit()
 			return false, nil
 		case 2:
 			// This step just confirms the first transaction...
@@ -516,7 +499,7 @@ func TestPipelineUsesLatestGasEstimateAndStorjPrice(t *testing.T) {
 			test.R.Equal(decimal.RequireFromString("10.00").String(), tx.StorjPrice.String())
 			test.R.Equal(big.NewInt(20000000), tx.StorjTokens)
 
-			test.commit(tx.Hash)
+			test.commit()
 			return false, nil
 		case 4:
 			// This step just confirms the second transaction
@@ -558,8 +541,7 @@ func TestPipelineTransferFrom(t *testing.T) {
 
 	var tx *pipelinedb.Transaction
 
-	client := test.Network.NewClient()
-	defer client.Close()
+	client := test.Backend.Client()
 
 	lastBalance, err := client.BalanceAt(ctx, spender.Address, nil)
 	test.R.NoError(err)
@@ -639,7 +621,9 @@ func TestPipelineChecksSTORJBalanceBeforeTransfer(t *testing.T) {
 	test.R.EqualError(err, "not enough STORJ balance to cover transfer (100000000000 < 1000000000000)")
 
 	// No transactions should have been sent
-	test.R.Equal(0, test.Network.PendingTransactionCount())
+	pending, err := test.Client.PendingTransactionCount(context.Background())
+	test.R.NoError(err)
+	test.R.Equal(uint(0), pending)
 
 	// Alice should have nothing
 	test.RequireEqualBig(big.NewInt(0), test.STORJBalance(alice.Address))
@@ -669,7 +653,9 @@ func TestPipelineChecksSTORJAllowanceBeforeTransfer(t *testing.T) {
 	test.R.EqualError(err, "not enough STORJ allowance to cover transfer")
 
 	// No transactions should have been sent
-	test.R.Equal(0, test.Network.PendingTransactionCount())
+	pending, err := test.Client.PendingTransactionCount(context.Background())
+	test.R.NoError(err)
+	test.R.Equal(uint(0), pending)
 
 	// Alice should have nothing
 	test.RequireEqualBig(big.NewInt(0), test.STORJBalance(alice.Address))
@@ -702,7 +688,7 @@ func TestPipelineVerySmallPayment(t *testing.T) {
 		case 1:
 			test.R.Len(pipeline, 1)
 			test.R.Len(pipeline[0].Txs, 1)
-			test.commit(pipeline[0].Txs[0].Hash)
+			test.commit()
 			return false, nil
 		case 2:
 			// in this step it was determined that the tx was confirmed
@@ -757,6 +743,7 @@ func WithGasTipCap(gasTipCap *big.Int) PipelineTestOption {
 
 type PipelineTest struct {
 	*testing.T
+	A *assert.Assertions
 	R *require.Assertions
 
 	// config
@@ -769,8 +756,8 @@ type PipelineTest struct {
 
 	Quoter *ethtest.Quoter
 
-	Network         *ethtest.Network
-	Client          *ethclient.Client
+	Backend         *simulated.Backend
+	Client          simulated.Client
 	Contract        *contract.Token
 	ContractAddress common.Address
 }
@@ -779,10 +766,10 @@ func NewPipelineTest(t *testing.T, opts ...PipelineTestOption) *PipelineTest {
 	dir := t.TempDir()
 
 	test := &PipelineTest{
-		T:         t,
-		R:         require.New(t),
-		limit:     1,
-		gasTipCap: big.NewInt(1),
+		T:     t,
+		A:     assert.New(t),
+		R:     require.New(t),
+		limit: 1,
 	}
 
 	for _, opt := range opts {
@@ -828,32 +815,35 @@ func (test *PipelineTest) SetStorjPrice(s string) {
 func (test *PipelineTest) initNetwork() {
 	// Create a network, giving the owner and spender a little bit of cheese
 	// to get things going.
-	test.Network, test.Client = ethtest.NewNetworkAndClient(test,
-		// grant deployer just enough to pay for the contract deployment
-		ethtest.WithAccount(deployer, big.NewInt(1200000)),
-		ethtest.WithAccount(owner, big.NewInt(startingETH)),
-		ethtest.WithAccount(spender, big.NewInt(startingETH)),
-	)
+
+	initialBalance, _ := new(big.Int).SetString("900000000000000000", 10)
+
+	alloc := core.DefaultGenesisBlock().Alloc
+	alloc[deployer.Address] = types.Account{Balance: initialBalance}
+	alloc[owner.Address] = types.Account{Balance: initialBalance}
+	alloc[spender.Address] = types.Account{Balance: initialBalance}
+
+	test.Backend = simulated.NewBackend(alloc, simulated.WithMinerMinTip(big.NewInt(1)))
+	test.Cleanup(func() {
+		_ = test.Backend.Close()
+	})
+	test.Client = test.Backend.Client()
 
 	// Deploy the ETH20 contract and commit
-	opts, err := bind.NewKeyedTransactorWithChainID(deployer.Key, big.NewInt(1337))
+	auth, err := bind.NewKeyedTransactorWithChainID(deployer.Key, big.NewInt(1337))
 	test.R.NoError(err)
-	opts.Nonce = big.NewInt(0)
-	opts.GasPrice = big.NewInt(1)
-	opts.GasLimit = 1200000
 	contractAddress, _, contract, err := contract.DeployToken(
-		opts,
+		auth,
 		test.Client,
 		owner.Address,
 		"Storj", "STORJ",
 		big.NewInt(initialStorj),
 		big.NewInt(8))
 	test.R.NoError(err, "unable to deploy contract")
-	test.commit()
 	test.Contract = contract
 	test.ContractAddress = contractAddress
-	// 951225 is how much gas it actually takes
-	test.R.Equal(big.NewInt(1200000-961413), test.ETHBalance(deployer.Address))
+
+	test.commit()
 }
 
 func (test *PipelineTest) NewPipeline() *Pipeline {
@@ -897,7 +887,7 @@ func (test *PipelineTest) ProcessPayouts(step func(int, []*pipelinedb.NonceGroup
 	err := pipeline.initPayout(ctx)
 	test.R.NoError(err)
 	for i := 0; ; i++ {
-
+		test.Logf("============= STEP %d ============= ", i)
 		expectedDone, expectedErr := step(i, pipeline.nonceGroups, cancel)
 		test.R.NoError(err)
 
@@ -906,11 +896,16 @@ func (test *PipelineTest) ProcessPayouts(step func(int, []*pipelinedb.NonceGroup
 		}
 
 		done, err := pipeline.payoutStep(ctx)
-		test.R.Equal(expectedDone, done)
+		var failed bool
+		failed = failed || !test.A.Equal(expectedDone, done, "step %d had an unexpected done state", i)
 		if expectedErr != nil {
-			test.R.EqualError(err, expectedErr.Error())
+			failed = failed || !test.A.EqualError(err, expectedErr.Error())
 		} else {
-			test.R.NoError(err)
+			failed = failed || !test.A.NoError(err)
+		}
+
+		if failed {
+			test.FailNow()
 		}
 
 		if done {
@@ -978,16 +973,19 @@ func (test *PipelineTest) STORJBalance(address common.Address) *big.Int {
 }
 
 func (test *PipelineTest) Approve(owner, spender *ethtest.Account, amount *big.Int) {
+	txHash := test.ApproveNoCommit(owner, spender, amount)
+	test.commit()
+	state, _, _, err := eth.GetTransactionInfo(context.Background(), test.Client, txHash)
+	test.R.NoError(err)
+	test.R.Equal(pipelinedb.TxConfirmed, state)
+}
+
+func (test *PipelineTest) ApproveNoCommit(owner, spender *ethtest.Account, amount *big.Int) common.Hash {
 	opts, err := bind.NewKeyedTransactorWithChainID(owner.Key, big.NewInt(1337))
-	opts.GasPrice = big.NewInt(1)
-	opts.GasLimit = 100000
 	test.R.NoError(err)
 	tx, err := test.Contract.Approve(opts, spender.Address, amount)
 	test.R.NoError(err)
-	test.commit(tx.Hash().String())
-	state, _, _, err := eth.GetTransactionInfo(context.Background(), test.Client, tx.Hash())
-	test.R.NoError(err)
-	test.R.Equal(pipelinedb.TxConfirmed, state)
+	return tx.Hash()
 }
 
 func (test *PipelineTest) Allowance(owner, spender *ethtest.Account) *big.Int {
@@ -1008,12 +1006,17 @@ func (test *PipelineTest) LogNonceGroups(pipeline []pipelinedb.NonceGroup) {
 	}
 }
 
-func (test *PipelineTest) commit(hashStrings ...string) {
-	var hashes []common.Hash
-	for _, h := range hashStrings {
-		hash, err := batchpayment.HashFromString(h)
-		test.R.NoError(err)
-		hashes = append(hashes, hash)
-	}
-	test.Network.Commit(hashes...)
+func (test *PipelineTest) commit() {
+	hash := test.Backend.Commit()
+
+	count, err := test.Client.TransactionCount(context.Background(), hash)
+	test.R.NoError(err)
+
+	test.Logf("Block %v committed (%d transactions, %d still pending)", hash, count, test.pendingTransactionCount())
+}
+
+func (test *PipelineTest) pendingTransactionCount() uint {
+	pending, err := test.Client.PendingTransactionCount(context.Background())
+	test.R.NoError(err)
+	return pending
 }

@@ -28,7 +28,7 @@ func NewAccount() *Account {
 
 func (acc *Account) AddTxToBlock(tb testing.TB, block *core.BlockGen, to common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int) {
 	tx := types.NewTransaction(block.TxNonce(acc.Address), to, amount, gasLimit, gasPrice, nil)
-	signer := types.MakeSigner(params.AllEthashProtocolChanges, block.Number())
+	signer := types.MakeSigner(params.AllEthashProtocolChanges, block.Number(), block.Timestamp())
 	tx, err := types.SignTx(tx, signer, acc.Key)
 	require.NoError(tb, err)
 	block.AddTx(tx)

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 
@@ -24,7 +24,7 @@ import (
 )
 
 type EthPayer struct {
-	client        *ethclient.Client
+	client        EthClient
 	contract      *contract.Token
 	owner         common.Address
 	gasTipCap     *big.Int
@@ -41,8 +41,16 @@ var (
 	zero = big.NewInt(0)
 )
 
+type EthClient interface {
+	bind.ContractBackend
+	ethereum.ChainReader
+	ethereum.ChainStateReader
+	ethereum.PendingStateReader
+	ethereum.TransactionReader
+}
+
 func NewEthPayer(ctx context.Context,
-	client *ethclient.Client,
+	client EthClient,
 	contractAddress common.Address,
 	owner common.Address,
 	key *ecdsa.PrivateKey,

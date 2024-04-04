@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -15,8 +16,11 @@ import (
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/shopspring/decimal"
 	"github.com/zeebo/errs"
-	"github.com/zksync-sdk/zksync2-go"
-	"github.com/zksync-sdk/zksync2-go/contracts/ERC20"
+	"github.com/zksync-sdk/zksync2-go/accounts"
+	"github.com/zksync-sdk/zksync2-go/clients"
+	"github.com/zksync-sdk/zksync2-go/contracts/erc20"
+	zktypes "github.com/zksync-sdk/zksync2-go/types"
+	"github.com/zksync-sdk/zksync2-go/utils"
 	"go.uber.org/zap"
 
 	"storj.io/crypto-batch-payment/pkg/contract"
@@ -26,9 +30,9 @@ import (
 )
 
 type Payer struct {
-	wallet           *zksync2.Wallet
-	zk               *zksync2.DefaultProvider
-	signer           *zksync2.DefaultEthSigner
+	wallet           *accounts.Wallet
+	zk               clients.Client
+	signer           *accounts.BaseSigner
 	contractAddress  common.Address
 	erc20abi         abi.ABI
 	decimals         int32
@@ -45,30 +49,31 @@ func NewPayer(
 	paymasterPayload []byte,
 	maxFee *big.Int) (*Payer, error) {
 
-	ethereumSigner, err := zksync2.NewEthSignerFromRawPrivateKey(key.D.Bytes(), int64(chainID))
+	ethSigner, err := accounts.NewBaseSignerFromRawPrivateKey(key.D.Bytes(), int64(chainID))
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
 
-	zkSyncProvider, err := zksync2.NewDefaultProvider(url)
+	zkClients, err := clients.Dial(url)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
 
-	wallet, err := zksync2.NewWallet(ethereumSigner, zkSyncProvider)
+	signer := accounts.Signer(ethSigner)
+	wallet, err := accounts.NewWalletFromSigner(&signer, &zkClients, nil)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
 
-	erc20abi, err := abi.JSON(strings.NewReader(ERC20.ERC20MetaData.ABI))
+	erc20abi, err := abi.JSON(strings.NewReader(erc20.IERC20MetaData.ABI))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load erc20abi: %w", err)
 	}
 
 	p := &Payer{
 		wallet:           wallet,
-		zk:               zkSyncProvider,
-		signer:           ethereumSigner,
+		zk:               zkClients,
+		signer:           ethSigner,
 		contractAddress:  contractAddress,
 		erc20abi:         erc20abi,
 		paymasterAddress: paymasterAddress,
@@ -80,11 +85,11 @@ func NewPayer(
 }
 
 func (p *Payer) NextNonce(ctx context.Context) (uint64, error) {
-	nonce, err := p.wallet.GetNonce()
+	nonce, err := p.wallet.Nonce(ctx, nil)
 	if err != nil {
 		return 0, errs.Wrap(err)
 	}
-	return nonce.Uint64(), nil
+	return nonce, nil
 }
 
 func (p *Payer) CheckPreconditions(ctx context.Context) ([]string, error) {
@@ -92,13 +97,11 @@ func (p *Payer) CheckPreconditions(ctx context.Context) ([]string, error) {
 }
 
 func (p *Payer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
-	return p.wallet.GetBalanceOf(p.signer.GetAddress(), &zksync2.Token{
-		L2Address: p.contractAddress,
-	}, zksync2.BlockNumberCommitted)
+	return p.wallet.Balance(ctx, p.contractAddress, nil)
 }
 
 func (p *Payer) GetTokenDecimals(ctx context.Context) (int32, error) {
-	tokenContract, err := contract.NewToken(p.contractAddress, p.zk.GetClient())
+	tokenContract, err := contract.NewToken(p.contractAddress, p.zk)
 	if err != nil {
 		return 0, fmt.Errorf("failed to load ERC20: %w", err)
 	}
@@ -111,7 +114,7 @@ func (p *Payer) GetTokenDecimals(ctx context.Context) (int32, error) {
 }
 
 func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payouts []*pipelinedb.Payout, nonce uint64, storjPrice decimal.Decimal) (tx payer.Transaction, from common.Address, err error) {
-	from = p.signer.GetAddress()
+	from = p.signer.Address()
 
 	if len(payouts) > 1 {
 		err = errs.New("multitransfer is not supported yet")
@@ -126,22 +129,7 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 		return tx, from, errs.Wrap(err)
 	}
 
-	zkTx := zksync2.CreateFunctionCallTransaction(
-		from,
-		p.contractAddress,
-		big.NewInt(0),
-		big.NewInt(0),
-		big.NewInt(0),
-		packedData,
-		nil, nil,
-	)
-
-	gas, err := p.zk.EstimateGas(zkTx)
-	if err != nil {
-		return tx, from, errs.Wrap(err)
-	}
-
-	gasPrice, err := p.zk.GetGasPrice()
+	gasPrice, err := p.zk.SuggestGasPrice(ctx)
 	if err != nil {
 		return tx, from, errs.Wrap(err)
 	}
@@ -151,36 +139,61 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 		return tx, from, errs.Wrap(err)
 	}
 
-	data := zksync2.NewTransaction712(
-		chainID,
-		big.NewInt(int64(nonce)),
-		gas,
-		zkTx.To,
-		zkTx.Value.ToInt(),
-		zkTx.Data,
-		big.NewInt(100000000), // TODO: Estimate correct one
-		gasPrice,
-		zkTx.From,
-		zkTx.Eip712Meta,
-	)
+	callMsg := zktypes.CallMsg{
+		CallMsg: ethereum.CallMsg{
+			From:      from,
+			To:        &p.contractAddress,
+			Gas:       0,                     // estimated below
+			GasTipCap: big.NewInt(100000000), // TODO: Estimate correct one
+			GasFeeCap: gasPrice,
+			Value:     nil,
+			Data:      packedData,
+		},
+		Meta: &zktypes.Eip712Meta{
+			GasPerPubdata: utils.NewBig(utils.DefaultGasPerPubdataLimit.Int64()),
+		},
+	}
 
 	if p.paymasterAddress != nil {
-		data.Meta.PaymasterParams = &zksync2.PaymasterParams{
+		callMsg.Meta.PaymasterParams = &zktypes.PaymasterParams{
 			Paymaster:      *p.paymasterAddress,
 			PaymasterInput: p.paymasterPayload,
 		}
 	}
 
-	domain := p.signer.GetDomain()
+	gas, err := p.zk.EstimateGasL2(ctx, callMsg)
+	if err != nil {
+		return tx, from, errs.Wrap(err)
+	}
+
+	data := &zktypes.Transaction712{
+		Nonce:     big.NewInt(int64(nonce)),
+		GasTipCap: callMsg.GasTipCap,
+		GasFeeCap: callMsg.GasFeeCap,
+		Gas:       new(big.Int).SetUint64(gas),
+		To:        callMsg.To,
+		Value:     callMsg.Value,
+		Data:      callMsg.Data,
+		ChainID:   chainID,
+		From:      &callMsg.From,
+		Meta:      callMsg.Meta,
+	}
+
+	domain := p.signer.Domain()
+
+	message, err := data.EIP712Message()
+	if err != nil {
+		return tx, from, errs.Wrap(err)
+	}
 
 	typedData := apitypes.TypedData{
 		Types: apitypes.Types{
-			data.GetEIP712Type():   data.GetEIP712Types(),
-			domain.GetEIP712Type(): domain.GetEIP712Types(),
+			data.EIP712Type():   data.EIP712Types(),
+			domain.EIP712Type(): domain.EIP712Types(),
 		},
-		PrimaryType: data.GetEIP712Type(),
-		Domain:      domain.GetEIP712Domain(),
-		Message:     data.GetEIP712Message(),
+		PrimaryType: data.EIP712Type(),
+		Domain:      domain.EIP712Domain(),
+		Message:     message,
 	}
 
 	hashTypedData, err := p.signer.HashTypedData(typedData)
@@ -211,7 +224,7 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 }
 
 func (p *Payer) SendTransaction(ctx context.Context, log *zap.Logger, tx payer.Transaction) error {
-	hash, err := p.zk.SendRawTransaction(tx.Raw.([]byte))
+	hash, err := p.zk.SendRawTransaction(ctx, tx.Raw.([]byte))
 	if err != nil {
 		return err
 	}
@@ -227,7 +240,7 @@ func (p *Payer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup
 	}
 
 	txHash := common.HexToHash(nonceGroup.Txs[0].Hash)
-	zkReceipt, err := p.zk.GetTransactionReceipt(txHash)
+	zkReceipt, err := p.zk.TransactionReceipt(ctx, txHash)
 	if err != nil {
 		return pipelinedb.TxDropped, []*pipelinedb.TxStatus{}, errs.Wrap(err)
 	}
