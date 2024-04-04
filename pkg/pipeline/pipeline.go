@@ -276,10 +276,16 @@ func (p *Pipeline) checkNonceGroups(ctx context.Context) (bool, error) {
 	failedCount := 0
 checkLoop:
 	for i := range p.nonceGroups {
+		log := p.log.With(zap.Uint64("nonce", p.nonceGroups[i].Nonce), zap.Int64("payout-group-id", p.nonceGroups[i].PayoutGroupID))
+
+		log.Debug("Checking nonce group",
+			zap.Int("txs", len(p.nonceGroups[i].Txs)),
+		)
+
 		var err error
 		var state pipelinedb.TxState
 		var all []*pipelinedb.TxStatus
-		state, all, err = p.payer.CheckNonceGroup(ctx, p.nonceGroups[i], failedCount > 0)
+		state, all, err = p.payer.CheckNonceGroup(ctx, log, p.nonceGroups[i], failedCount > 0)
 		if err != nil {
 			return true, err
 		}
@@ -337,18 +343,18 @@ func (p *Pipeline) sendTransaction(ctx context.Context, payoutGroupID int64, non
 	}
 
 	for {
-		ready, err := p.payer.IsPreconditionMet(ctx)
+		unmet, err := p.payer.CheckPreconditions(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if ready {
+		if len(unmet) == 0 {
 			break
 		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(5 * time.Second):
-			p.log.Info("Precondition is not met, waiting for 5 seconds")
+			p.log.Info("One or more preconditions are not met, waiting for 5 seconds", zap.Strings("unmet", unmet))
 		}
 	}
 
@@ -416,7 +422,7 @@ func (p *Pipeline) sendTransaction(ctx context.Context, payoutGroupID int64, non
 		return nil, err
 	}
 
-	err = p.payer.SendTransaction(ctx, rawTx)
+	err = p.payer.SendTransaction(ctx, txLog, rawTx)
 	return tx, err
 }
 

@@ -30,7 +30,6 @@ import (
 )
 
 type Payer struct {
-	log              *zap.Logger
 	wallet           *accounts.Wallet
 	zk               clients.Client
 	signer           *accounts.BaseSigner
@@ -42,7 +41,6 @@ type Payer struct {
 }
 
 func NewPayer(
-	logger *zap.Logger,
 	contractAddress common.Address,
 	url string,
 	key *ecdsa.PrivateKey,
@@ -74,7 +72,6 @@ func NewPayer(
 
 	p := &Payer{
 		wallet:           wallet,
-		log:              logger,
 		zk:               zkClients,
 		signer:           ethSigner,
 		contractAddress:  contractAddress,
@@ -95,8 +92,8 @@ func (p *Payer) NextNonce(ctx context.Context) (uint64, error) {
 	return nonce, nil
 }
 
-func (p *Payer) IsPreconditionMet(ctx context.Context) (bool, error) {
-	return true, nil
+func (p *Payer) CheckPreconditions(ctx context.Context) ([]string, error) {
+	return nil, nil
 }
 
 func (p *Payer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
@@ -226,7 +223,7 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 	}, from, nil
 }
 
-func (p *Payer) SendTransaction(ctx context.Context, tx payer.Transaction) error {
+func (p *Payer) SendTransaction(ctx context.Context, log *zap.Logger, tx payer.Transaction) error {
 	hash, err := p.zk.SendRawTransaction(ctx, tx.Raw.([]byte))
 	if err != nil {
 		return err
@@ -237,7 +234,7 @@ func (p *Payer) SendTransaction(ctx context.Context, tx payer.Transaction) error
 	return nil
 }
 
-func (p *Payer) CheckNonceGroup(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
+func (p *Payer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
 	if len(nonceGroup.Txs) != 1 {
 		return pipelinedb.TxFailed, nil, errs.New("ZkSync2 payer supports only one transaction per nonce group")
 	}
