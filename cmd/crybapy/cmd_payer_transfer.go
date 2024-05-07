@@ -18,10 +18,9 @@ import (
 
 type payerTransferConfig struct {
 	*payerCommandConfig
-	Amount              string
-	Destination         string
-	EstimateCacheExpiry time.Duration
-	Price               string
+	Amount      string
+	Destination string
+	Price       string
 }
 
 func newPayerTransferCommand(parentConfig *payerCommandConfig) *cobra.Command {
@@ -36,11 +35,6 @@ func newPayerTransferCommand(parentConfig *payerCommandConfig) *cobra.Command {
 			return checkCmd(doPayerTransfer(config, args[0]))
 		},
 	}
-	cmd.Flags().DurationVarP(
-		&config.EstimateCacheExpiry,
-		"estimate-cache-expiry", "",
-		time.Second*5,
-		"How often gas estimates should be recalculated")
 	cmd.Flags().StringVarP(
 		&config.Price,
 		"price", "",
@@ -108,10 +102,6 @@ func doPayerTransfer(config *payerTransferConfig, spenderKeyPath string) error {
 	err = payouts.Run(config.Ctx,
 		log,
 		payouts.Config{
-			DataDir: config.DataDir,
-			Name:    "ad-hoc",
-
-			EstimateCacheExpiry: config.EstimateCacheExpiry,
 			Quoter: coinmarketcap.QuoterFunc(func(ctx context.Context, symbol coinmarketcap.Symbol) (*coinmarketcap.Quote, error) {
 				price, err := decimal.NewFromString(config.Price)
 				if price.IntPart() == 0 {
