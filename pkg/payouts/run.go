@@ -16,13 +16,7 @@ import (
 )
 
 type Config struct {
-	DataDir string
-
-	Name string
-
 	Quoter coinmarketcap.Quoter
-
-	EstimateCacheExpiry time.Duration
 
 	PipelineLimit int
 
