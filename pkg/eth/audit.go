@@ -7,7 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethclient"
 
-	"storj.io/crypto-batch-payment/pkg"
+	batchpayment "storj.io/crypto-batch-payment/pkg"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 )
@@ -53,4 +53,8 @@ func (e *EthAuditor) CheckConfirmedTransactionState(ctx context.Context, hash st
 	}
 
 	return TxStateFromReceipt(receipt), nil
+}
+
+func (e *EthAuditor) Close() {
+	e.client.Close()
 }
