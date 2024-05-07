@@ -95,6 +95,10 @@ func NewEthPayer(ctx context.Context,
 	}, nil
 }
 
+func (e *EthPayer) String() string {
+	return string(payer.Eth)
+}
+
 func (e *EthPayer) NextNonce(ctx context.Context) (uint64, error) {
 	return e.client.NonceAt(ctx, e.from, nil)
 }

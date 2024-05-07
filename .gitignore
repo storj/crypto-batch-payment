@@ -17,4 +17,4 @@
 # testing whose location will differ between users.
 geth.ipc
 
-cryptohopper
+/crybapy

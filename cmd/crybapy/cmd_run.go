@@ -21,7 +21,6 @@ type runConfig struct {
 	PayerConfig
 	Name                    string
 	SpenderKeyPath          string
-	EstimateCacheExpiry     time.Duration
 	CoinMarketCapAPIURL     string
 	CoinMarketCapAPIKeyPath string
 	QuoteCacheExpiry        time.Duration
@@ -58,11 +57,6 @@ func newRunCommand(rootConfig *rootConfig) *cobra.Command {
 		"coinmarkcap-api-key-path", "",
 		filepath.Join(homeDir, ".coinmarketcapkey"),
 		"Path on disk to the CoinMarketCap API key")
-	cmd.Flags().DurationVarP(
-		&config.EstimateCacheExpiry,
-		"estimate-cache-expiry", "",
-		time.Second*5,
-		"How often gas estimates should be recalculated")
 	cmd.Flags().DurationVarP(
 		&config.QuoteCacheExpiry,
 		"quote-cache-expiry", "",
@@ -134,12 +128,7 @@ func doRun(config *runConfig) error {
 	err = payouts.Run(config.Ctx,
 		log,
 		payouts.Config{
-			DataDir: config.DataDir,
-			Name:    config.Name,
-
-			EstimateCacheExpiry: config.EstimateCacheExpiry,
-			Quoter:              quoter,
-
+			Quoter:        quoter,
 			PipelineLimit: config.PipelineLimit,
 			TxDelay:       config.TxDelay,
 			Drain:         config.Drain,
