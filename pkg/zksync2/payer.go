@@ -84,6 +84,10 @@ func NewPayer(
 
 }
 
+func (p *Payer) String() string {
+	return string(payer.ZkSync2)
+}
+
 func (p *Payer) NextNonce(ctx context.Context) (uint64, error) {
 	nonce, err := p.wallet.Nonce(ctx, nil)
 	if err != nil {
