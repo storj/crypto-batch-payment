@@ -90,17 +90,27 @@ func OpenDB(ctx context.Context, path string, readOnly bool) (_ *DB, err error) 
 
 	row, err := db.First_Metadata_Version(ctx)
 	if err != nil {
-		return nil, err
+		return nil, errs.Wrap(err)
 	}
 
 	switch {
 	case row.Version < dbVersion:
-		// Database is old. Migrate forward and retry.
+		if readOnly {
+			// If readOnly, close and re-open the database for writing
+			if err := db.Close(); err != nil {
+				return nil, errs.Wrap(err)
+			}
+			db, err = openDB(path, false)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// Migrate forward, then close and re-open.
 		if err := migrateDB(ctx, db, row.Version); err != nil {
 			return nil, err
 		}
 		if err := db.Close(); err != nil {
-			return nil, err
+			return nil, errs.Wrap(err)
 		}
 		db, err = openDB(path, readOnly)
 		if err != nil {
@@ -700,21 +710,25 @@ func migrateDB(ctx context.Context, db *payoutdb.DB, version int) (err error) {
 	for from < dbVersion {
 		tx, err := rx.UnsafeTx(ctx)
 		if err != nil {
-			return err
+			return errs.Wrap(err)
 		}
 
 		to := from + 1
 		switch to {
 		case 2:
-			if err := migrateV2(tx); err != nil {
+			if err := migrateV2(ctx, tx); err != nil {
 				return err
 			}
 		default:
-			return errs.New("no migration to version %d available", version)
+			return errs.New("no migration to version %d available", to)
+		}
+
+		if _, err := tx.ExecContext(ctx, "UPDATE metadata SET version = ?", to); err != nil {
+			return errs.Wrap(err)
 		}
 
 		if err := rx.Commit(); err != nil {
-			return err
+			return errs.Wrap(err)
 		}
 
 		from = to
@@ -723,7 +737,7 @@ func migrateDB(ctx context.Context, db *payoutdb.DB, version int) (err error) {
 	return nil
 }
 
-func migrateV2(tx *sql.Tx) error {
+func migrateV2(ctx context.Context, tx *sql.Tx) error {
 	// version 2 renamed the "payer" column in both metadata and
 	// transaction tables to "owner".
 	stmts := []string{
@@ -768,7 +782,7 @@ func migrateV2(tx *sql.Tx) error {
 	}
 
 	for _, stmt := range stmts {
-		if _, err := tx.Exec(stmt); err != nil {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return errs.Wrap(err)
 		}
 	}
