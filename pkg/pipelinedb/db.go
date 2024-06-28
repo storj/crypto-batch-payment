@@ -317,7 +317,6 @@ func (db *DB) FinalizeNonceGroup(ctx context.Context, nonceGroup *NonceGroup, st
 }
 
 func (db *DB) CreateTransaction(ctx context.Context, tx Transaction) (*Transaction, error) {
-
 	row, err := db.db.Create_Transaction(ctx,
 		payoutdb.Transaction_Hash(tx.Hash),
 		payoutdb.Transaction_Owner(tx.Owner.String()),
@@ -559,6 +558,7 @@ func PayoutGroupFromRow(row *payoutdb.PayoutGroup) (*PayoutGroup, error) {
 }
 
 type Transaction struct {
+	CreatedAt         time.Time
 	Hash              string
 	Owner             common.Address
 	Spender           common.Address
@@ -622,6 +622,7 @@ func TransactionFromRow(row *payoutdb.Transaction) (*Transaction, error) {
 	}
 
 	return &Transaction{
+		CreatedAt:         row.CreatedAt,
 		Hash:              row.Hash,
 		Owner:             owner,
 		Spender:           spender,

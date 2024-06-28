@@ -23,6 +23,10 @@ const (
 	// txStatusPollInterval is often to poll for transaction status
 	txStatusPollInterval = time.Second
 
+	// notDroppedUntil is how long to wait after submitting a transaction
+	// before it should be considered dropped.
+	notDroppedUntil = time.Second * 30
+
 	// DefaultLimit is the default limit of concurrent payout group transfers
 	// to manage at a time. Both parity and geth have a per-address tx limit
 	// lower bound of 16, but can be configured for more. As such, 16 is the
@@ -292,6 +296,13 @@ checkLoop:
 
 		switch state {
 		case pipelinedb.TxDropped:
+			// Do not consider transactions dropped until notDroppedUntil time
+			// has elapsed since their creation. This avoids false-positives
+			// when using networks like Infura, whose nodes are eventually
+			// consistent.
+			if time.Since(youngestTransactionTime(p.nonceGroups[i].Txs)) < notDroppedUntil {
+				break checkLoop
+			}
 			// All the transactions have been dropped. Send another transaction for
 			// this nonce group. Indicate to the caller that there was a drop.
 			tx, err := p.sendTransaction(ctx, p.nonceGroups[i].PayoutGroupID, p.nonceGroups[i].Nonce)
@@ -442,4 +453,15 @@ func sleepFor(ctx context.Context, d time.Duration) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func youngestTransactionTime(txs []pipelinedb.Transaction) time.Time {
+	// This _should_ be the last transaction in the list, but just in case...
+	var youngest time.Time
+	for _, tx := range txs {
+		if youngest.Before(tx.CreatedAt) {
+			youngest = tx.CreatedAt
+		}
+	}
+	return youngest
 }
