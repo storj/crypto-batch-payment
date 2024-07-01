@@ -15,7 +15,7 @@ import (
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/storjtoken"
 	"storj.io/crypto-batch-payment/pkg/zksync"
-	"storj.io/crypto-batch-payment/pkg/zksync2"
+	"storj.io/crypto-batch-payment/pkg/zksyncera"
 )
 
 type PayerConfig struct {
@@ -58,7 +58,7 @@ func RegisterFlags(cmd *cobra.Command, config *PayerConfig) {
 		&config.PayerType,
 		"type", "",
 		string(payer.Eth),
-		"Type of the payment (eth,zksync2,zksync,zkwithdraw,sim,polygon)")
+		"Type of the payment (eth,zksyncera,zksync,zkwithdraw,sim,polygon)")
 	cmd.Flags().StringVarP(
 		&config.MaxFee,
 		"max-fee", "",
@@ -184,7 +184,7 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 		if err != nil {
 			return
 		}
-	case payer.ZkSync2:
+	case payer.ZkSyncEra:
 		var paymasterAddress *common.Address
 		var paymasterPayload []byte
 		if config.PaymasterAddress != "" {
@@ -192,7 +192,7 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			paymasterAddress = &a
 			paymasterPayload = common.Hex2Bytes(config.PaymasterPayload)
 		}
-		paymentPayer, err = zksync2.NewPayer(
+		paymentPayer, err = zksyncera.NewPayer(
 			common.HexToAddress(config.ContractAddress),
 			nodeAddress,
 			spenderKey,

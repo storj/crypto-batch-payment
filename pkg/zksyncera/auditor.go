@@ -1,4 +1,4 @@
-package zksync2
+package zksyncera
 
 import (
 	"context"
