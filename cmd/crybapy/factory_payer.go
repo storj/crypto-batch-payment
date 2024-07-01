@@ -57,7 +57,7 @@ func RegisterFlags(cmd *cobra.Command, config *PayerConfig) {
 	cmd.Flags().StringVarP(
 		&config.PayerType,
 		"type", "",
-		string(payer.Eth),
+		payer.Eth.String(),
 		"Type of the payment (eth,zksync2,zksync,zkwithdraw,sim,polygon)")
 	cmd.Flags().StringVarP(
 		&config.MaxFee,

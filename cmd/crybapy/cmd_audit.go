@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
+
 	"github.com/logrusorgru/aurora"
 	"github.com/spf13/cobra"
-	"os"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/payouts"
-	"strconv"
 )
 
 type auditConfig struct {
@@ -47,7 +48,7 @@ func newAuditCommand(rootConfig *rootConfig) *cobra.Command {
 	cmd.Flags().StringVarP(
 		&config.PayerType,
 		"type", "",
-		string(payer.Eth),
+		payer.Eth.String(),
 		"Type of the payment (eth,sim)")
 	return cmd
 }

@@ -39,6 +39,10 @@ func NewSimPayer() (*SimPayer, error) {
 	}, nil
 }
 
+func (s *SimPayer) String() string {
+	return Sim.String()
+}
+
 func (s *SimPayer) NextNonce(ctx context.Context) (uint64, error) {
 	return uint64(0), nil
 }

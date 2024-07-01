@@ -25,6 +25,9 @@ type Transaction struct {
 
 // Payer is responsible for the final payment transfer
 type Payer interface {
+	// Strings returns a string describing the payer type
+	String() string
+
 	// NextNonce queries chain for the next available nonce value.
 	NextNonce(ctx context.Context) (uint64, error)
 
