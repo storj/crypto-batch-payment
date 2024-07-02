@@ -1,4 +1,4 @@
-package zksync2
+package zksyncera
 
 import (
 	"context"
@@ -85,7 +85,7 @@ func NewPayer(
 }
 
 func (p *Payer) String() string {
-	return payer.ZkSync2.String()
+	return payer.ZkSyncEra.String()
 }
 
 func (p *Payer) NextNonce(ctx context.Context) (uint64, error) {
@@ -240,7 +240,7 @@ func (p *Payer) SendTransaction(ctx context.Context, log *zap.Logger, tx payer.T
 
 func (p *Payer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
 	if len(nonceGroup.Txs) != 1 {
-		return pipelinedb.TxFailed, nil, errs.New("ZkSync2 payer supports only one transaction per nonce group")
+		return pipelinedb.TxFailed, nil, errs.New("ZkSyncEra payer supports only one transaction per nonce group")
 	}
 
 	txHash := common.HexToHash(nonceGroup.Txs[0].Hash)

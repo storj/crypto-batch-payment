@@ -14,7 +14,7 @@ import (
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 	"storj.io/crypto-batch-payment/pkg/zksync"
-	"storj.io/crypto-batch-payment/pkg/zksync2"
+	"storj.io/crypto-batch-payment/pkg/zksyncera"
 
 	"storj.io/crypto-batch-payment/pkg/csv"
 )
@@ -63,9 +63,9 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 		if err != nil {
 			return nil, err
 		}
-	case payer.ZkSync2:
+	case payer.ZkSyncEra:
 		var err error
-		auditor, err = zksync2.NewAuditor(nodeAddress)
+		auditor, err = zksyncera.NewAuditor(nodeAddress)
 		if err != nil {
 			return nil, err
 		}
