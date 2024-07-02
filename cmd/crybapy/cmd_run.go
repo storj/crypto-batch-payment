@@ -123,7 +123,7 @@ func doRun(config *runConfig) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	err = payouts.Run(config.Ctx,
 		log,
@@ -139,6 +139,11 @@ func doRun(config *runConfig) error {
 	if err != nil {
 		return err
 	}
+
+	if err := db.Close(); err != nil {
+		return errs.New("failed to close database: %v", err)
+	}
+
 	fmt.Println("Payouts complete.")
 	return nil
 }

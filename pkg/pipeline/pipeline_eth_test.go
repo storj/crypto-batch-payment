@@ -580,7 +580,7 @@ func TestPipelineTransferFrom(t *testing.T) {
 			newBalance, err := client.BalanceAt(ctx, spender.Address, nil)
 			test.R.NoError(err)
 
-			//make sure only gas * (baseFee + tip) is used
+			// make sure only gas * (baseFee + tip) is used
 			gasCost := new(big.Int).Add(block.BaseFee(), gasTipCap)
 			cost := new(big.Int).Mul(gasCost, big.NewInt(int64(receipt.GasUsed)))
 			test.R.Equal(new(big.Int).Sub(lastBalance, cost), newBalance)
@@ -855,7 +855,7 @@ func (test *PipelineTest) newPipeline(stepInCh chan chan []*pipelinedb.NonceGrou
 	if test.spender != nil {
 		spenderKey = test.spender.Key
 	}
-	payer, err := eth.NewEthPayer(context.Background(),
+	payer, err := eth.NewPayer(context.Background(),
 		test.Client,
 		test.ContractAddress,
 		owner.Address,
@@ -864,7 +864,7 @@ func (test *PipelineTest) newPipeline(stepInCh chan chan []*pipelinedb.NonceGrou
 		test.gasTipCap,
 		test.maxGas)
 	test.R.NoError(err)
-	pipeline, err := NewPipeline(payer, PipelineConfig{
+	pipeline, err := New(payer, Config{
 		Log:          zaptest.NewLogger(test),
 		Owner:        owner.Address,
 		Quoter:       test.Quoter,

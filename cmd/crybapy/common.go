@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/zeebo/errs/v2"
 	"math/big"
 	"os"
 	"os/signal"
+
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/zeebo/errs/v2"
 
 	"github.com/mitchellh/go-homedir"
 )
@@ -51,14 +52,14 @@ func checkCmd(err error) error {
 	return err
 }
 
-// setGasCap adjust gas tips in the opts for ad-hoc transactions
+// setGasCap adjust gas tips in the opts for ad-hoc transactions.
 func setGasCap(ctx context.Context, client *ethclient.Client, opts *bind.TransactOpts, gasTipCap int64) (estimatedGasPrice *big.Int, err error) {
 	head, err := client.BlockByNumber(ctx, nil)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
 
-	//We don't use gas oracle here as it's unreliable
+	// We don't use gas oracle here as it's unreliable
 	opts.GasTipCap = big.NewInt(gasTipCap)
 
 	// this is the max limit. Only (baseFee + gasTip) * gas will be paid, but as the base fee can be moved meantime we

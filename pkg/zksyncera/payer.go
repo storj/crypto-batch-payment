@@ -121,8 +121,7 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 	from = p.signer.Address()
 
 	if len(payouts) > 1 {
-		err = errs.New("multitransfer is not supported yet")
-		return
+		return payer.Transaction{}, common.Address{}, errs.New("multitransfer is not supported yet")
 	}
 	payout := payouts[0]
 
@@ -130,17 +129,17 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 
 	packedData, err := p.erc20abi.Pack("transfer", payout.Payee, tokenAmount)
 	if err != nil {
-		return tx, from, errs.Wrap(err)
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	gasPrice, err := p.zk.SuggestGasPrice(ctx)
 	if err != nil {
-		return tx, from, errs.Wrap(err)
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	chainID, err := p.zk.ChainID(ctx)
 	if err != nil {
-		return tx, from, errs.Wrap(err)
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	callMsg := zktypes.CallMsg{
@@ -167,7 +166,7 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 
 	gas, err := p.zk.EstimateGasL2(ctx, callMsg)
 	if err != nil {
-		return tx, from, errs.Wrap(err)
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	data := &zktypes.Transaction712{
@@ -187,7 +186,7 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 
 	message, err := data.EIP712Message()
 	if err != nil {
-		return tx, from, errs.Wrap(err)
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	typedData := apitypes.TypedData{
@@ -202,17 +201,17 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 
 	hashTypedData, err := p.signer.HashTypedData(typedData)
 	if err != nil {
-		return
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	signature, err := p.signer.SignTypedData(domain, data)
 	if err != nil {
-		return tx, from, errs.Wrap(err)
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	rawTx, err := data.RLPValues(signature)
 	if err != nil {
-		return tx, from, errs.Wrap(err)
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	hash := common.Hash{}

@@ -23,8 +23,8 @@ import (
 	"storj.io/crypto-batch-payment/pkg/storjtoken"
 )
 
-type EthPayer struct {
-	client        EthClient
+type Payer struct {
+	client        Client
 	contract      *contract.Token
 	owner         common.Address
 	gasTipCap     *big.Int
@@ -35,13 +35,13 @@ type EthPayer struct {
 }
 
 var (
-	_ payer.Payer = &EthPayer{}
+	_ payer.Payer = &Payer{}
 
 	// zero is a big int set to 0 for convenience.
 	zero = big.NewInt(0)
 )
 
-type EthClient interface {
+type Client interface {
 	bind.ContractBackend
 	ethereum.ChainReader
 	ethereum.ChainStateReader
@@ -49,14 +49,14 @@ type EthClient interface {
 	ethereum.TransactionReader
 }
 
-func NewEthPayer(ctx context.Context,
-	client EthClient,
+func NewPayer(ctx context.Context,
+	client Client,
 	contractAddress common.Address,
 	owner common.Address,
 	key *ecdsa.PrivateKey,
 	chainID *big.Int,
 	gasTipCap *big.Int,
-	maxGas *big.Int) (*EthPayer, error) {
+	maxGas *big.Int) (*Payer, error) {
 
 	contract, err := contract.NewToken(contractAddress, &ignoreSend{
 		ContractBackend: client,
@@ -83,7 +83,7 @@ func NewEthPayer(ctx context.Context,
 		return nil, errs.Wrap(err)
 	}
 
-	return &EthPayer{
+	return &Payer{
 		owner:         owner,
 		gasTipCap:     gasTipCap,
 		maxGas:        maxGas,
@@ -95,15 +95,15 @@ func NewEthPayer(ctx context.Context,
 	}, nil
 }
 
-func (e *EthPayer) String() string {
+func (e *Payer) String() string {
 	return payer.Eth.String()
 }
 
-func (e *EthPayer) NextNonce(ctx context.Context) (uint64, error) {
+func (e *Payer) NextNonce(ctx context.Context) (uint64, error) {
 	return e.client.NonceAt(ctx, e.from, nil)
 }
 
-func (e *EthPayer) CheckPreconditions(ctx context.Context) (unmet []string, err error) {
+func (e *Payer) CheckPreconditions(ctx context.Context) (unmet []string, err error) {
 	lastBlock, err := e.client.BlockByNumber(ctx, nil)
 	if err != nil {
 		return nil, errs.Wrap(err)
@@ -120,7 +120,7 @@ func (e *EthPayer) CheckPreconditions(ctx context.Context) (unmet []string, err 
 
 }
 
-func (e *EthPayer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
+func (e *Payer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
 	storjBalance, err := e.contract.BalanceOf(&bind.CallOpts{
 		Pending: false,
 		Context: ctx,
@@ -128,13 +128,12 @@ func (e *EthPayer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
 	return storjBalance, errs.Wrap(err)
 }
 
-func (e *EthPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payouts []*pipelinedb.Payout,
-	nonce uint64, storjPrice decimal.Decimal) (tx payer.Transaction, from common.Address, err error) {
+func (e *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payouts []*pipelinedb.Payout,
+	nonce uint64, storjPrice decimal.Decimal) (_ payer.Transaction, _ common.Address, err error) {
 
 	var rawTx *types.Transaction
 	if len(payouts) > 1 {
-		err = errs.Errorf("multitransfer is not supported yet")
-		return
+		return payer.Transaction{}, common.Address{}, errs.Errorf("multitransfer is not supported yet")
 	}
 	payout := payouts[0]
 
@@ -162,27 +161,23 @@ func (e *EthPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, pa
 			Context: ctx,
 		}, e.owner, opts.From)
 		if err != nil {
-			err = errs.Wrap(err)
-			return
+			return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 		}
 		if storjAllowance.Cmp(storjTokens) < 0 {
-			err = errs.Errorf("not enough STORJ allowance to cover transfer")
-			return
+			return payer.Transaction{}, common.Address{}, errs.Errorf("not enough STORJ allowance to cover transfer")
 		}
 
 		opts.GasLimit = contract.TokenTransferFromGasLimit
 		rawTx, err = e.contract.TransferFrom(opts, e.owner, payout.Payee, storjTokens)
 	}
 	if err != nil {
-		err = errs.Wrap(err)
-		return
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	// Grab the pending ETH balance for logging
 	ethBalance, err := e.client.PendingBalanceAt(ctx, opts.From)
 	if err != nil {
-		err = errs.Wrap(err)
-		return
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	fields := []zap.Field{
@@ -207,16 +202,16 @@ func (e *EthPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, pa
 	}, e.from, nil
 }
 
-func (e *EthPayer) SendTransaction(ctx context.Context, log *zap.Logger, t payer.Transaction) error {
+func (e *Payer) SendTransaction(ctx context.Context, log *zap.Logger, t payer.Transaction) error {
 	switch tx := t.Raw.(type) {
 	case *types.Transaction:
 		return errs.Wrap(e.client.SendTransaction(ctx, tx))
 	default:
-		return errs.Errorf("EthPayer doesn't support transaction %v", t.Raw)
+		return errs.Errorf("payer doesn't support transaction %v", t.Raw)
 	}
 }
 
-func (e *EthPayer) EstimatedGasFee(ctx context.Context) (*big.Int, error) {
+func (e *Payer) EstimatedGasFee(ctx context.Context) (*big.Int, error) {
 	lastBlock, err := e.client.BlockByNumber(ctx, nil)
 	if err != nil {
 		return nil, errs.Wrap(err)
@@ -226,7 +221,7 @@ func (e *EthPayer) EstimatedGasFee(ctx context.Context) (*big.Int, error) {
 	return baseGasFee, nil
 }
 
-func (e *EthPayer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
+func (e *Payer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
 	transactions, err := e.getNonceGroupTxStatus(ctx, log, nonceGroup)
 	if err != nil {
 		return "", transactions.all, err
@@ -284,7 +279,7 @@ type nonceGroupTransactions struct {
 	other   []*pipelinedb.TxStatus
 }
 
-func (e *EthPayer) getNonceGroupTxStatus(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup) (txs nonceGroupTransactions, err error) {
+func (e *Payer) getNonceGroupTxStatus(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup) (txs nonceGroupTransactions, err error) {
 	var all, dropped, other []*pipelinedb.TxStatus
 	counts := struct {
 		pending   int
@@ -364,7 +359,7 @@ func (e *EthPayer) getNonceGroupTxStatus(ctx context.Context, log *zap.Logger, n
 	}, nil
 }
 
-func (e *EthPayer) getTransactionStatus(ctx context.Context, hashString string) (*pipelinedb.TxStatus, error) {
+func (e *Payer) getTransactionStatus(ctx context.Context, hashString string) (*pipelinedb.TxStatus, error) {
 	hash, err := batchpayment.HashFromString(hashString)
 	if err != nil {
 		return nil, err
@@ -381,7 +376,7 @@ func (e *EthPayer) getTransactionStatus(ctx context.Context, hashString string) 
 	}, nil
 }
 
-func (e *EthPayer) PrintEstimate(ctx context.Context, remaining int64) error {
+func (e *Payer) PrintEstimate(ctx context.Context, remaining int64) error {
 
 	// TODO: revisit with multitransfer by estimating payout group size, etc.
 	var gasPerTx *big.Int
@@ -406,7 +401,7 @@ func (e *EthPayer) PrintEstimate(ctx context.Context, remaining int64) error {
 	return nil
 }
 
-func (e *EthPayer) GetTokenDecimals(ctx context.Context) (int32, error) {
+func (e *Payer) GetTokenDecimals(ctx context.Context) (int32, error) {
 	return e.tokenDecimals, nil
 }
 

@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	// txStatusPollInterval is often to poll for transaction status
+	// txStatusPollInterval is often to poll for transaction status.
 	txStatusPollInterval = time.Second
 
 	// notDroppedUntil is how long to wait after submitting a transaction
@@ -33,7 +33,7 @@ const (
 	// safe default.
 	DefaultLimit = 16
 
-	// DefaultTxDelay is the default tx delay (see TxDelay in Config)
+	// DefaultTxDelay is the default tx delay (see TxDelay in Config).
 	DefaultTxDelay = time.Duration(0)
 )
 
@@ -42,7 +42,7 @@ var (
 	zero = big.NewInt(0)
 )
 
-type PipelineConfig struct {
+type Config struct {
 	// Log is the logger for logging pipeline progress
 	Log *zap.Logger
 
@@ -97,7 +97,7 @@ type Pipeline struct {
 	nonceGroups   []*pipelinedb.NonceGroup
 }
 
-func NewPipeline(payer payer.Payer, config PipelineConfig) (*Pipeline, error) {
+func New(payer payer.Payer, config Config) (*Pipeline, error) {
 	if config.Limit == 0 {
 		config.Limit = DefaultLimit
 	}

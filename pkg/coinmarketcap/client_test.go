@@ -336,5 +336,5 @@ func (handler *testHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(handler.status)
-	w.Write([]byte(handler.body))
+	_, _ = w.Write([]byte(handler.body))
 }

@@ -63,7 +63,7 @@ func printFileStat(ctx context.Context, out *csv.Writer, f string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	payouts, err := db.FetchPayouts(ctx)
 	if err != nil {
 		return err

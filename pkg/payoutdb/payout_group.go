@@ -3,6 +3,7 @@ package payoutdb
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/zeebo/errs"
 )
@@ -25,7 +26,7 @@ func (db *DB) FirstUnfinishedUnattachedPayoutGroup(ctx context.Context) (*Payout
 	stmt := `SELECT pk FROM payout_group` + unfinishedUnattachedConditional
 	var pk int64
 	if err := db.DB.QueryRow(stmt).Scan(&pk); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, errs.Wrap(err)

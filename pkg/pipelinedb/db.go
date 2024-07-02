@@ -121,7 +121,7 @@ func OpenDB(ctx context.Context, path string, readOnly bool) (_ *DB, err error) 
 		return nil, errs.New("database version is in the future (%d); upgrade your tool (%d)", row.Version, dbVersion)
 	}
 
-	// read out the metadata and check the version for compatability
+	// read out the metadata and check the version for compatibility
 	metadata, err := db.First_Metadata(ctx)
 	if err != nil {
 		return nil, errs.Wrap(err)
@@ -274,7 +274,7 @@ func (db *DB) FetchPayoutGroupPayouts(ctx context.Context, payoutGroupID int64) 
 	return PayoutsFromRows(rows)
 }
 
-// FetchPayoutGroupPayoutCount returns the count of payouts in a payout group
+// FetchPayoutGroupPayoutCount returns the count of payouts in a payout group.
 func (db *DB) FetchPayoutGroupPayoutCount(ctx context.Context, payoutGroupID int64) (int64, error) {
 	count, err := db.db.Count_Payout_By_PayoutGroupId(ctx, payoutdb.Payout_PayoutGroupId(payoutGroupID))
 	if err != nil {
@@ -656,7 +656,7 @@ func initDB(ctx context.Context, path string) error {
 	if err != nil {
 		return errs.Wrap(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(db.Schema()); err != nil {
 		return errs.Wrap(err)

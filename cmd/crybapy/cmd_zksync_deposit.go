@@ -215,7 +215,7 @@ func getStorjContract(ctx context.Context, nodeAddress string) (string, error) {
 
 func zkSyncRestAPI(ctx context.Context, nodeAddress string, path string, value interface{}) error {
 	if nodeAddress[len(nodeAddress)-1] != '/' {
-		nodeAddress = nodeAddress + "/"
+		nodeAddress += "/"
 	}
 	if path[0] == '/' {
 		path = path[1:]
@@ -232,7 +232,7 @@ func zkSyncRestAPI(ctx context.Context, nodeAddress string, path string, value i
 	if err != nil {
 		return errs.Wrap(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 300 {
 		return errs.New("HTTP request to ZkSync api %s is failed: %d %v", url, resp.StatusCode, err)

@@ -20,7 +20,7 @@ func (a Auditor) CheckTransactionState(ctx context.Context, hash string) (pipeli
 }
 
 func (a Auditor) CheckConfirmedTransactionState(ctx context.Context, hash string) (pipelinedb.TxState, error) {
-	//TODO this is a double check based on current logic and later can be removed / simplified.
+	// TODO this is a double check based on current logic and later can be removed / simplified.
 	status, err := a.client.TxStatus(ctx, hash)
 	if err != nil {
 		return pipelinedb.TxFailed, err

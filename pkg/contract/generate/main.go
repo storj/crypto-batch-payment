@@ -35,7 +35,7 @@ func generate() error {
 	if compileToken {
 		pwd, err := os.Getwd()
 		if err != nil {
-			return fmt.Errorf("failed to get working dir: %v", err)
+			return fmt.Errorf("failed to get working dir: %w", err)
 		}
 
 		err = run("docker", "run", "--rm",
@@ -43,13 +43,13 @@ func generate() error {
 			"--optimize", "--abi", "--bin",
 			"-o", "/s", "/s/storj.sol")
 		if err != nil {
-			return fmt.Errorf("failed to build storj.sol: %v", err)
+			return fmt.Errorf("failed to build storj.sol: %w", err)
 		}
 	}
 
 	err := abigen()
 	if err != nil {
-		return fmt.Errorf("failed to generate abi: %v", err)
+		return fmt.Errorf("failed to generate abi: %w", err)
 	}
 
 	return nil

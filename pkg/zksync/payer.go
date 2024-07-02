@@ -75,13 +75,12 @@ func (z Payer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
 
 func (z Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payouts []*pipelinedb.Payout, nonce uint64, storjPrice decimal.Decimal) (tx payer.Transaction, from common.Address, err error) {
 	if len(payouts) > 1 {
-		err = errs.Errorf("multitransfer is not supported yet")
-		return
+		return payer.Transaction{}, common.Address{}, errs.Errorf("multitransfer is not supported yet")
 	}
 
 	address, err := z.client.Address()
 	if err != nil {
-		return payer.Transaction{}, address, err
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	payout := payouts[0]
@@ -90,7 +89,7 @@ func (z Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payout
 	for {
 		fee, err = z.client.GetFee(ctx, z.TxTypeString(), payout.Payee.String(), "STORJ")
 		if err != nil {
-			return payer.Transaction{}, address, err
+			return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 		}
 		if z.maxFee == nil || z.maxFee.Cmp(fee) >= 0 {
 			break
@@ -104,12 +103,12 @@ func (z Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payout
 
 	txs, err := z.client.CreateTx(ctx, z.TxTypeString(), payout.Payee, storjTokens, fee, z.token, int(nonce))
 	if err != nil {
-		return payer.Transaction{}, address, err
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
 	hash, err := txs.Tx.Hash()
 	if err != nil {
-		return payer.Transaction{}, address, err
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 	return payer.Transaction{
 		Raw:   txs,

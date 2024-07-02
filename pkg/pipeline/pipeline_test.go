@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/shopspring/decimal"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
@@ -39,7 +40,7 @@ func Test_HappyPath(t *testing.T) {
 			USD:   decimal.New(1, 0),
 		},
 	})
-	defer db.Close()
+	t.Cleanup(func() { assert.NoError(t, db.Close()) })
 
 	p, _ := createTestPipeline(ctx, t, db)
 
@@ -73,7 +74,7 @@ func Test_TestIntermittentTxError(t *testing.T) {
 			USD:   decimal.New(100, 0),
 		},
 	})
-	defer db.Close()
+	t.Cleanup(func() { assert.NoError(t, db.Close()) })
 
 	pipeline, testPayer := createTestPipeline(ctx, t, db)
 
@@ -159,7 +160,7 @@ func createTestPipeline(ctx context.Context, t *testing.T, db *pipelinedb.DB) (*
 	logger, err := zap.NewDevelopment()
 	require.NoError(t, err)
 
-	cfg := PipelineConfig{
+	cfg := Config{
 		DB:  db,
 		Log: logger,
 		Quoter: &StaticQuoter{
@@ -168,7 +169,7 @@ func createTestPipeline(ctx context.Context, t *testing.T, db *pipelinedb.DB) (*
 	}
 
 	testPayer := NewTestPayer()
-	p, err := NewPipeline(testPayer, cfg)
+	p, err := New(testPayer, cfg)
 	require.NoError(t, err)
 	return p, testPayer
 }

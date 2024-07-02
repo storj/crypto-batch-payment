@@ -46,7 +46,7 @@ func (a *Auditor) CheckConfirmedTransactionState(ctx context.Context, hash strin
 	switch {
 	// Receipts aren't available for pending transactions. This function is
 	// only called after CheckTransactionState and we know the transaction
-	// exists so we don't have to accomodate "dropped" status here.
+	// exists so we don't have to accommodate "dropped" status here.
 	case err == nil:
 		batchDetails, err := a.client.L1BatchDetails(ctx, txReceipt.L1BatchNumber.ToInt())
 		if err != nil {

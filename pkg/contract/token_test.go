@@ -29,7 +29,7 @@ func TestDeployToken(t *testing.T) {
 	alloc[alice.Address] = types.Account{Balance: initialBalance}
 	alloc[bob.Address] = types.Account{Balance: initialBalance}
 
-	backend := simulated.NewBackend(alloc) //, simulated.WithBlockGasLimit(16*1024*1024))
+	backend := simulated.NewBackend(alloc)
 	client := backend.Client()
 
 	chainID, err := client.ChainID(ctx)
