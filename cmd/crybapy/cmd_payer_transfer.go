@@ -73,7 +73,7 @@ func doPayerTransfer(config *payerTransferConfig, spenderKeyPath string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	usdAmount, err := decimal.NewFromString(config.Amount)
 	if err != nil {

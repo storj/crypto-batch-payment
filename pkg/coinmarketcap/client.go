@@ -89,7 +89,7 @@ func (cli *Client) GetQuote(ctx context.Context, symbol Symbol) (*Quote, error) 
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, errs.New("unexpected status %d: %s", resp.StatusCode, tryRead(resp.Body))

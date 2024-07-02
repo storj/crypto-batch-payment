@@ -58,7 +58,7 @@ func doAudit(config *auditConfig) error {
 
 	var bad bool
 
-	payerType, err := payer.PayerTypeFromString(config.PayerType)
+	payerType, err := payer.TypeFromString(config.PayerType)
 	if err != nil {
 		return err
 	}
@@ -99,14 +99,14 @@ func doAudit(config *auditConfig) error {
 
 type auditSink struct{}
 
-func (auditSink) ReportStatus(format string, args ...interface{}) {
+func (auditSink) ReportStatusf(format string, args ...interface{}) {
 	fmt.Println(aurora.White(fmt.Sprintf(format, args...)))
 }
 
-func (auditSink) ReportWarn(format string, args ...interface{}) {
+func (auditSink) ReportWarnf(format string, args ...interface{}) {
 	fmt.Fprintln(os.Stderr, aurora.Yellow(fmt.Sprintf(format, args...)))
 }
 
-func (auditSink) ReportError(format string, args ...interface{}) {
+func (auditSink) ReportErrorf(format string, args ...interface{}) {
 	fmt.Fprintln(os.Stderr, aurora.Red(fmt.Sprintf(format, args...)))
 }

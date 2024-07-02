@@ -28,7 +28,7 @@ func packBigInt(value *big.Int, expBits uint8, mantissaBits uint8) []byte {
 	return resultBytes
 }
 
-// unpackBigInt unpacks the packed value
+// unpackBigInt unpacks the packed value.
 func unpackBigInt(value []byte, expBits uint8) *big.Int {
 	left, right := splitByBits(value, expBits)
 	exp := new(big.Int).SetBytes(right)
@@ -51,7 +51,7 @@ func closestPackableAmount(value *big.Int, expBits uint8, mantissaBits uint8) *b
 }
 
 // splitByBits byte array by a bit number
-// for example [abcdefgh pqrstuwx],5 should return with [000defgh], [pqr stuwxabc]
+// for example [abcdefgh pqrstuwx],5 should return with [000defgh], [pqr stuwxabc].
 func splitByBits(value []byte, splitPos uint8) ([]byte, []byte) {
 	split := splitPos
 	shift := uint8(0)
@@ -64,7 +64,7 @@ func splitByBits(value []byte, splitPos uint8) ([]byte, []byte) {
 		} else if split > 0 {
 			// we should shift all the remaining value by this
 			shift = split
-			//drop the upper bytes
+			// drop the upper bytes
 			val := x << (8 - split) >> (8 - split)
 			right = append([]byte{val}, right...)
 
@@ -74,7 +74,7 @@ func splitByBits(value []byte, splitPos uint8) ([]byte, []byte) {
 			left = append(left, val)
 		} else {
 			if shift > 0 {
-				left[0] = left[0] + x<<(8-shift)
+				left[0] += +x << (8 - shift)
 			}
 			left = append([]byte{x >> shift}, left...)
 		}

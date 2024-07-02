@@ -11,7 +11,7 @@ func (db *DB) WithTx(ctx context.Context, fn func(*Tx) error) (err error) {
 		if err == nil {
 			err = tx.Commit()
 		} else {
-			tx.Rollback() // log this perhaps?
+			_ = tx.Rollback() // log this perhaps?
 		}
 	}()
 	return fn(tx)

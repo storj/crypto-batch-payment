@@ -12,7 +12,6 @@ import (
 )
 
 func main() {
-	//spenderKey, spenderKey := makeAccount()
 	ownerKey, ownerAddress := makeAccount()
 
 	writeFile("owner-key", []byte(ownerKey+"\n"), 0600)
@@ -22,7 +21,7 @@ func main() {
 	accountsCSV := csv.NewWriter(accountsBytes)
 	for i := 0; i < 1000; i++ {
 		key, address := makeAccount()
-		accountsCSV.Write([]string{strconv.Itoa(i + 1), address, key})
+		_ = accountsCSV.Write([]string{strconv.Itoa(i + 1), address, key})
 	}
 	accountsCSV.Flush()
 

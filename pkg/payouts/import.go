@@ -50,7 +50,7 @@ func importPayouts(ctx context.Context, csvPath, dir string) error {
 	if err != nil {
 		return err
 	}
-	payouts := PayoutsFromCSV(rows)
+	payouts := FromCSV(rows)
 
 	// ensure the parent directory exists
 	if err := os.MkdirAll(filepath.Dir(dir), 0755); err != nil {
@@ -61,7 +61,7 @@ func importPayouts(ctx context.Context, csvPath, dir string) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	db, err := pipelinedb.NewDB(ctx, filepath.Join(tmpDir, dbName))
 	if err != nil {

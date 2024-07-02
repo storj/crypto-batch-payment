@@ -6,25 +6,24 @@ import (
 	"github.com/zeebo/errs"
 )
 
-// PayerType represents the payment method.
-type PayerType string
+// Type represents the payment method.
+type Type string
 
 const (
-	Eth       PayerType = "eth"
-	Sim       PayerType = "sim"
-	ZkSync    PayerType = "zksync"
-	ZkSyncEra PayerType = "zksync-era"
-	// specific zksync payment which pays to eth from zksync
-	ZkWithdraw PayerType = "zkwithdraw"
-	Polygon    PayerType = "polygon"
+	Eth        Type = "eth"
+	Sim        Type = "sim"
+	ZkSync     Type = "zksync"
+	ZkSyncEra  Type = "zksync-era"
+	ZkWithdraw Type = "zkwithdraw"
+	Polygon    Type = "polygon"
 )
 
-func (pt PayerType) String() string {
+func (pt Type) String() string {
 	return string(pt)
 }
 
-// PayerTypeFromString parses string to a PayerType const.
-func PayerTypeFromString(t string) (PayerType, error) {
+// TypeFromString parses string to a Type const.
+func TypeFromString(t string) (Type, error) {
 	switch strings.ToLower(t) {
 	case "eth":
 		return Eth, nil

@@ -180,7 +180,7 @@ func (t *Token) Format(value *big.Int) string {
 	result := decimal.NewFromBigInt(value, -t.Decimals).String()
 	// note: 1 should be represented as 1.0 in the base string of eth signature
 	if !strings.Contains(result, ".") {
-		result = result + ".0"
+		result += ".0"
 	}
 	return result
 }

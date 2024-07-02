@@ -20,9 +20,9 @@ import (
 )
 
 type AuditSink interface {
-	ReportStatus(format string, args ...interface{})
-	ReportWarn(format string, args ...interface{})
-	ReportError(format string, args ...interface{})
+	ReportStatusf(format string, args ...interface{})
+	ReportWarnf(format string, args ...interface{})
+	ReportErrorf(format string, args ...interface{})
 }
 
 type AuditStats struct {
@@ -40,7 +40,7 @@ type AuditStats struct {
 	DoublePayStorj *big.Int
 }
 
-func Audit(ctx context.Context, dir string, csvPath string, payerType payer.PayerType, nodeAddress string, chainID int, sink AuditSink, receiptsOut string, receiptsForce bool) (*AuditStats, error) {
+func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Type, nodeAddress string, chainID int, sink AuditSink, receiptsOut string, receiptsForce bool) (*AuditStats, error) {
 	var auditor payer.Auditor
 	switch payerType {
 	case payer.Eth, payer.Polygon:
@@ -49,7 +49,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 			return nil, errs.New("Failed to dial node %q: %v\n", nodeAddress, err)
 		}
 		defer client.Close()
-		auditor, err = eth.NewEthAuditor(nodeAddress)
+		auditor, err = eth.NewAuditor(nodeAddress)
 		if err != nil {
 			return nil, err
 		}
@@ -78,14 +78,16 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 	if err != nil {
 		return nil, err
 	}
-	csvPayouts := PayoutsFromCSV(rows)
+	csvPayouts := FromCSV(rows)
 
 	receiptsBuf := new(bytes.Buffer)
 	receiptsCSV := stdcsv.NewWriter(receiptsBuf)
-	receiptsCSV.Write([]string{"wallet", "amount", "txhash", "mechanism"})
+	if err := receiptsCSV.Write([]string{"wallet", "amount", "txhash", "mechanism"}); err != nil {
+		return nil, err
+	}
 
 	// Load the database
-	sink.ReportStatus("Loading database...")
+	sink.ReportStatusf("Loading database...")
 	dbDir, err := dbDirFromCSVPath(dir, csvPath)
 	if err != nil {
 		return nil, err
@@ -94,10 +96,10 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Load payout rows
-	sink.ReportStatus("Fetching payouts...")
+	sink.ReportStatusf("Fetching payouts...")
 	dbPayouts, err := db.FetchPayouts(ctx)
 	if err != nil {
 		return nil, err
@@ -112,7 +114,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 	for _, csvPayout := range csvPayouts {
 		if _, ok := csvPayoutsByLine[csvPayout.CSVLine]; ok {
 			// This would only happen if there was a bug loading payouts from CSV
-			sink.ReportError("Duplicate CSV line %d detected in CSV payouts", csvPayout.CSVLine)
+			sink.ReportErrorf("Duplicate CSV line %d detected in CSV payouts", csvPayout.CSVLine)
 		}
 		csvPayoutsByLine[csvPayout.CSVLine] = csvPayout
 	}
@@ -120,7 +122,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 	for _, dbPayout := range dbPayouts {
 		if _, ok := dbPayoutsByLine[dbPayout.CSVLine]; ok {
 			// This would only happen if there was a bug loading payouts from CSV
-			sink.ReportError("Duplicate CSV line %d detected in database payouts", dbPayout.CSVLine)
+			sink.ReportErrorf("Duplicate CSV line %d detected in database payouts", dbPayout.CSVLine)
 		}
 		dbPayoutsByLine[dbPayout.CSVLine] = dbPayout
 	}
@@ -128,42 +130,42 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 	mismatched := map[int]struct{}{}
 
 	// Ensure each CSV payout is represented accurately in the DB
-	sink.ReportStatus("Reconciling CSV payout entries...")
+	sink.ReportStatusf("Reconciling CSV payout entries...")
 	for _, csvPayout := range csvPayouts {
 		dbPayout, ok := dbPayoutsByLine[csvPayout.CSVLine]
 		if !ok {
-			sink.ReportError("No payout for CSV line %d in database", csvPayout.CSVLine)
+			sink.ReportErrorf("No payout for CSV line %d in database", csvPayout.CSVLine)
 			mismatched[csvPayout.CSVLine] = struct{}{}
 			continue
 		}
 		if dbPayout.Payee != csvPayout.Payee {
-			sink.ReportError("Payee mismatch on CSV line %d: csv=%q db=%q", csvPayout.CSVLine, csvPayout.Payee, dbPayout.Payee)
+			sink.ReportErrorf("Payee mismatch on CSV line %d: csv=%q db=%q", csvPayout.CSVLine, csvPayout.Payee, dbPayout.Payee)
 			mismatched[csvPayout.CSVLine] = struct{}{}
 			continue
 		}
 		if !dbPayout.USD.Equal(csvPayout.USD) {
-			sink.ReportError("Amount mismatch on CSV line %d: csv=%q db=%q", csvPayout.CSVLine, csvPayout.USD, dbPayout.USD)
+			sink.ReportErrorf("Amount mismatch on CSV line %d: csv=%q db=%q", csvPayout.CSVLine, csvPayout.USD, dbPayout.USD)
 			mismatched[csvPayout.CSVLine] = struct{}{}
 			continue
 		}
 	}
 
 	// Ensure each DB payout is represented accurately in the CSV
-	sink.ReportStatus("Reconciling DB payout entries...")
+	sink.ReportStatusf("Reconciling DB payout entries...")
 	for _, dbPayout := range dbPayouts {
 		csvPayout, ok := csvPayoutsByLine[dbPayout.CSVLine]
 		if !ok {
-			sink.ReportError("No payout for CSV line %d in database", dbPayout.CSVLine)
+			sink.ReportErrorf("No payout for CSV line %d in database", dbPayout.CSVLine)
 			mismatched[dbPayout.CSVLine] = struct{}{}
 			continue
 		}
 		if dbPayout.Payee != csvPayout.Payee {
-			sink.ReportError("Payee mismatch on CSV line %d: csv=%q db=%q", csvPayout.CSVLine, csvPayout.Payee, dbPayout.Payee)
+			sink.ReportErrorf("Payee mismatch on CSV line %d: csv=%q db=%q", csvPayout.CSVLine, csvPayout.Payee, dbPayout.Payee)
 			mismatched[dbPayout.CSVLine] = struct{}{}
 			continue
 		}
 		if !dbPayout.USD.Equal(csvPayout.USD) {
-			sink.ReportError("Amount mismatch on CSV line %d: csv=%q db=%q", csvPayout.CSVLine, csvPayout.USD, dbPayout.USD)
+			sink.ReportErrorf("Amount mismatch on CSV line %d: csv=%q db=%q", csvPayout.CSVLine, csvPayout.USD, dbPayout.USD)
 			mismatched[dbPayout.CSVLine] = struct{}{}
 			continue
 		}
@@ -173,7 +175,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 
 	// Confirm the status of each transaction to ensure we haven't accidentally
 	// overpaid.
-	sink.ReportStatus("Confirming TX status (transactions)...")
+	sink.ReportStatusf("Confirming TX status (transactions)...")
 	txs, err := db.FetchTransactions(ctx)
 	if err != nil {
 		return nil, err
@@ -185,10 +187,9 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 		now := time.Now()
 		if which == len(txs) || now.Sub(last) > time.Second {
 			last = now
-			sink.ReportStatus("Confirming TX status (%d/%d)...", which, len(txs))
+			sink.ReportStatusf("Confirming TX status (%d/%d)...", which, len(txs))
 		}
 		state, err := auditor.CheckTransactionState(ctx, tx.Hash)
-
 		if err != nil {
 			return nil, err
 		}
@@ -198,23 +199,25 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 		}
 
 		if tx.State == pipelinedb.TxDropped && state == pipelinedb.TxConfirmed {
-			sink.ReportError("Double pay for payout group %d (tokens=%s)", tx.PayoutGroupID, tx.StorjTokens)
+			sink.ReportErrorf("Double pay for payout group %d (tokens=%s)", tx.PayoutGroupID, tx.StorjTokens)
 			stats.DoublePays++
 			stats.DoublePayStorj.Add(stats.DoublePayStorj, tx.StorjTokens)
 		} else {
-			sink.ReportWarn("TX state mismatch on hash %q (db=%q, node=%q)", tx.Hash, tx.State, state)
+			sink.ReportWarnf("TX state mismatch on hash %q (db=%q, node=%q)", tx.Hash, tx.State, state)
 		}
 	}
 
 	// For each payout, ensure it belongs to a payout group with a confirmed
 	// transaction. Reconfirm the transaction against the blockchain.
-	sink.ReportStatus("Checking payouts status...")
+	sink.ReportStatusf("Checking payouts status...")
 	payoutGroupStatus := make(map[int64]string)
 	var payoutsConfirmed int64
 	for _, dbPayout := range dbPayouts {
 		if txHash, ok := payoutGroupStatus[dbPayout.PayoutGroupID]; ok {
 			if txHash != "" {
-				receiptsCSV.Write([]string{dbPayout.Payee.String(), dbPayout.USD.String(), txHash, payerType.String()})
+				if err := receiptsCSV.Write([]string{dbPayout.Payee.String(), dbPayout.USD.String(), txHash, payerType.String()}); err != nil {
+					return nil, errs.Wrap(err)
+				}
 			}
 			continue
 		}
@@ -232,7 +235,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 			return nil, err
 		}
 		if len(txs) == 0 {
-			sink.ReportError("Payout of %s to %s on line %d has no transactions",
+			sink.ReportErrorf("Payout of %s to %s on line %d has no transactions",
 				dbPayout.USD, dbPayout.Payee.String(), dbPayout.CSVLine)
 			stats.Unstarted += numPayouts
 			continue
@@ -253,12 +256,12 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 			case pipelinedb.TxConfirmed:
 				confirmed = append(confirmed, tx)
 			default:
-				sink.ReportError("Unexpected tx state %q on %s", tx.State, tx.Hash)
+				sink.ReportErrorf("Unexpected tx state %q on %s", tx.State, tx.Hash)
 			}
 		}
 
 		if len(confirmed) == 0 {
-			sink.ReportError("Payout of %s to %s on line %d has no confirmed transactions (pending=%d dropped=%d failed=%d)",
+			sink.ReportErrorf("Payout of %s to %s on line %d has no confirmed transactions (pending=%d dropped=%d failed=%d)",
 				dbPayout.USD, dbPayout.Payee.String(), dbPayout.CSVLine,
 				len(pending), len(dropped), len(failed))
 			switch {
@@ -279,10 +282,10 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 			state, err := auditor.CheckConfirmedTransactionState(ctx, tx.Hash)
 			switch {
 			case err != nil:
-				sink.ReportError("Failed to get receipt for transaction %s for payout of %s to %s on line %d",
+				sink.ReportErrorf("Failed to get receipt for transaction %s for payout of %s to %s on line %d",
 					tx.Hash, dbPayout.USD, dbPayout.Payee.String(), dbPayout.CSVLine)
 			case state != pipelinedb.TxConfirmed:
-				sink.ReportError("Transaction %s was %s instead of confirmed for payout of %s to %s on line %d",
+				sink.ReportErrorf("Transaction %s was %s instead of confirmed for payout of %s to %s on line %d",
 					tx.Hash, state, dbPayout.USD, dbPayout.Payee.String(), dbPayout.CSVLine)
 			default:
 				confirmedCount++
@@ -292,13 +295,15 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 		if confirmedCount > 0 {
 			txHash := confirmed[0].Hash
 			payoutGroupStatus[dbPayout.PayoutGroupID] = txHash
-			receiptsCSV.Write([]string{dbPayout.Payee.String(), dbPayout.USD.String(), txHash, payerType.String()})
+			if err := receiptsCSV.Write([]string{dbPayout.Payee.String(), dbPayout.USD.String(), txHash, payerType.String()}); err != nil {
+				return nil, errs.Wrap(err)
+			}
 			payoutsConfirmed += numPayouts
 		}
 
 		switch {
 		case confirmedCount > 1:
-			sink.ReportError("Payout of %s to %s on line %d has more than one (%d) confirmed transactions recorded",
+			sink.ReportErrorf("Payout of %s to %s on line %d has more than one (%d) confirmed transactions recorded",
 				dbPayout.USD, dbPayout.Payee.String(), dbPayout.CSVLine,
 				len(confirmed))
 			stats.Overpaid += numPayouts
@@ -315,15 +320,15 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 	case receiptsOut == "":
 	case payoutsConfirmed == stats.Total || receiptsForce:
 		receiptsCSV.Flush()
-		sink.ReportStatus("Writing receipts to %s...", receiptsOut)
+		sink.ReportStatusf("Writing receipts to %s...", receiptsOut)
 		if err := os.WriteFile(receiptsOut, receiptsBuf.Bytes(), 0644); err != nil {
-			return nil, err
+			return nil, errs.Wrap(err)
 		}
 	default:
-		sink.ReportStatus("Skipping writing receipts to %s; only %d of %d payouts confirmed", receiptsOut, payoutsConfirmed, stats.Total)
+		sink.ReportStatusf("Skipping writing receipts to %s; only %d of %d payouts confirmed", receiptsOut, payoutsConfirmed, stats.Total)
 	}
 
-	sink.ReportStatus("Done.")
+	sink.ReportStatusf("Done.")
 
 	return stats, nil
 }

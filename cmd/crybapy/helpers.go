@@ -104,7 +104,7 @@ func waitForTransaction(ctx context.Context, client *ethclient.Client, hash comm
 			}
 			fmt.Fprintf(os.Stderr, "Transaction failed with status %d\n", receipt.Status)
 			return errors.New("transaction failed")
-		case err == ethereum.NotFound:
+		case errors.Is(err, ethereum.NotFound):
 		default:
 			fmt.Println()
 			fmt.Fprintf(os.Stderr, "Failed to query for transaction receipt: %+v\n", err)
@@ -113,7 +113,7 @@ func waitForTransaction(ctx context.Context, client *ethclient.Client, hash comm
 		_, _, err = client.TransactionByHash(ctx, hash)
 		switch {
 		case err == nil:
-		case err == ethereum.NotFound:
+		case errors.Is(err, ethereum.NotFound):
 			fmt.Println()
 			fmt.Fprintf(os.Stderr, "Transaction was dropped\n")
 			return errors.New("transaction dropped")
@@ -130,7 +130,7 @@ func loadFirstLine(p string) (_ string, err error) {
 		return "", errs.Wrap(err)
 	}
 	defer func() {
-		errs.Combine(err, f.Close())
+		err = errs.Combine(err, f.Close())
 	}()
 	scanner := bufio.NewScanner(f)
 	if !scanner.Scan() {

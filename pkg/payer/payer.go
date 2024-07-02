@@ -19,13 +19,13 @@ type Transaction struct {
 	// Nonce is the nonce from the group.
 	Nonce uint64
 
-	// Raw is the internal representation of transaction data
+	// Raw is the internal representation of transaction data.
 	Raw any
 }
 
-// Payer is responsible for the final payment transfer
+// Payer is responsible for the final payment transfer.
 type Payer interface {
-	// Strings returns a string describing the payer type
+	// Strings returns a string describing the payer type.
 	String() string
 
 	// NextNonce queries chain for the next available nonce value.
@@ -34,7 +34,7 @@ type Payer interface {
 	// CheckPreconditions checks if transaction can be initiated. If unmet preconditions are returned then pipeline will try again after a short sleep.
 	CheckPreconditions(ctx context.Context) (unmet []string, err error)
 
-	// GetTokenBalance returns with the available token balance in real value (with decimals)
+	// GetTokenBalance returns with the available token balance in real value (with decimals).
 	GetTokenBalance(ctx context.Context) (*big.Int, error)
 
 	// GetTokenDecimals returns with the decimal precision of the token.

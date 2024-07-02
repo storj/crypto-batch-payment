@@ -13,26 +13,26 @@ import (
 )
 
 var (
-	_ payer.Auditor = &EthAuditor{}
+	_ payer.Auditor = &Auditor{}
 )
 
-// EthAuditor audits eth transactions.
-type EthAuditor struct {
+// Auditor audits eth transactions.
+type Auditor struct {
 	client *ethclient.Client
 }
 
-func NewEthAuditor(nodeAddress string) (*EthAuditor, error) {
+func NewAuditor(nodeAddress string) (*Auditor, error) {
 	client, err := ethclient.Dial(nodeAddress)
 	if err != nil {
 		return nil, errs.New("Failed to dial node %q: %v\n", nodeAddress, err)
 	}
 
-	return &EthAuditor{
+	return &Auditor{
 		client: client,
 	}, nil
 }
 
-func (e *EthAuditor) CheckTransactionState(ctx context.Context, hash string) (pipelinedb.TxState, error) {
+func (e *Auditor) CheckTransactionState(ctx context.Context, hash string) (pipelinedb.TxState, error) {
 	txHash, err := batchpayment.HashFromString(hash)
 	if err != nil {
 		return pipelinedb.TxFailed, err
@@ -42,7 +42,7 @@ func (e *EthAuditor) CheckTransactionState(ctx context.Context, hash string) (pi
 
 }
 
-func (e *EthAuditor) CheckConfirmedTransactionState(ctx context.Context, hash string) (pipelinedb.TxState, error) {
+func (e *Auditor) CheckConfirmedTransactionState(ctx context.Context, hash string) (pipelinedb.TxState, error) {
 	txHash, err := batchpayment.HashFromString(hash)
 	if err != nil {
 		return pipelinedb.TxFailed, err
@@ -55,6 +55,6 @@ func (e *EthAuditor) CheckConfirmedTransactionState(ctx context.Context, hash st
 	return TxStateFromReceipt(receipt), nil
 }
 
-func (e *EthAuditor) Close() {
+func (e *Auditor) Close() {
 	e.client.Close()
 }

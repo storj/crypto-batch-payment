@@ -85,7 +85,7 @@ func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB,
 		}
 	}
 
-	p, err := pipeline.NewPipeline(paymentPayer, pipeline.PipelineConfig{
+	p, err := pipeline.New(paymentPayer, pipeline.Config{
 		Log:     log,
 		Quoter:  config.Quoter,
 		DB:      db,

@@ -136,9 +136,9 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 		}
 	}
 
-	pt, err := payer.PayerTypeFromString(config.PayerType)
+	pt, err := payer.TypeFromString(config.PayerType)
 	if err != nil {
-		return
+		return nil, errs.Wrap(err)
 	}
 	switch pt {
 	case payer.Eth, payer.Polygon:
@@ -149,7 +149,7 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 		}
 		defer client.Close()
 
-		paymentPayer, err = eth.NewEthPayer(ctx,
+		paymentPayer, err = eth.NewPayer(ctx,
 			client,
 			contractAddress,
 			owner,
@@ -159,7 +159,7 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			&maxGas,
 		)
 		if err != nil {
-			return
+			return nil, errs.Wrap(err)
 		}
 	case payer.ZkSync:
 		paymentPayer, err = zksync.NewPayer(
@@ -170,7 +170,7 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			false,
 			maxFee)
 		if err != nil {
-			return paymentPayer, errs.New("Failed to dial node %q: %v\n", nodeAddress, err)
+			return nil, errs.Wrap(err)
 		}
 	case payer.ZkWithdraw:
 		paymentPayer, err = zksync.NewPayer(
@@ -181,7 +181,7 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			true,
 			maxFee)
 		if err != nil {
-			return
+			return nil, errs.Wrap(err)
 		}
 	case payer.ZkSyncEra:
 		var paymasterAddress *common.Address
@@ -200,15 +200,15 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			paymasterPayload,
 			maxFee)
 		if err != nil {
-			return
+			return nil, errs.Wrap(err)
 		}
 	case payer.Sim:
 		paymentPayer, err = payer.NewSimPayer()
 		if err != nil {
-			return
+			return nil, errs.Wrap(err)
 		}
 	default:
-		return paymentPayer, errs.New("unsupported payer type: %v", config.PayerType)
+		return nil, errs.New("unsupported payer type: %v", config.PayerType)
 	}
 	return paymentPayer, nil
 }

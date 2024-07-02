@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: read
+  # Needed for golangci-lint to annotate code in the PR
+  checks: write
 
 jobs:
   build:
@@ -23,6 +25,14 @@ jobs:
 
       - name: Test
         run: make test
-
-      - name: Lint
-        run: make lint
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.59
