@@ -96,7 +96,7 @@ func NewEthPayer(ctx context.Context,
 }
 
 func (e *EthPayer) String() string {
-	return string(payer.Eth)
+	return payer.Eth.String()
 }
 
 func (e *EthPayer) NextNonce(ctx context.Context) (uint64, error) {
