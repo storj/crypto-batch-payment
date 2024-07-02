@@ -19,6 +19,10 @@ const (
 	Polygon    PayerType = "polygon"
 )
 
+func (pt PayerType) String() string {
+	return string(pt)
+}
+
 // PayerTypeFromString parses string to a PayerType const.
 func PayerTypeFromString(t string) (PayerType, error) {
 	switch strings.ToLower(t) {

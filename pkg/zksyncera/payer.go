@@ -85,7 +85,7 @@ func NewPayer(
 }
 
 func (p *Payer) String() string {
-	return string(payer.ZkSyncEra)
+	return payer.ZkSyncEra.String()
 }
 
 func (p *Payer) NextNonce(ctx context.Context) (uint64, error) {

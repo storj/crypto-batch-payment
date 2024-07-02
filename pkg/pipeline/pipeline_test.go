@@ -192,6 +192,10 @@ func NewTestPayer() *TestPayer {
 	}
 }
 
+func (t *TestPayer) String() string {
+	return "test"
+}
+
 func (t *TestPayer) NextNonce(ctx context.Context) (uint64, error) {
 	ret := t.nextNonce
 	t.nextNonce++

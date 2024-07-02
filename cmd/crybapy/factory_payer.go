@@ -57,14 +57,13 @@ func RegisterFlags(cmd *cobra.Command, config *PayerConfig) {
 	cmd.Flags().StringVarP(
 		&config.PayerType,
 		"type", "",
-		string(payer.Eth),
-		"Type of the payment (eth,zksyncera,zksync,zkwithdraw,sim,polygon)")
+		payer.Eth.String(),
+		"Type of the payment (eth,zksync-era,zksync,zkwithdraw,sim,polygon)")
 	cmd.Flags().StringVarP(
 		&config.MaxFee,
 		"max-fee", "",
 		"",
 		"Max fee we're willing to consider. Only applies to zksync or zkwithdraw type payment.")
-
 	cmd.Flags().StringVarP(
 		&config.PaymasterAddress,
 		"paymaster-address", "",

@@ -214,7 +214,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 	for _, dbPayout := range dbPayouts {
 		if txHash, ok := payoutGroupStatus[dbPayout.PayoutGroupID]; ok {
 			if txHash != "" {
-				receiptsCSV.Write([]string{dbPayout.Payee.String(), dbPayout.USD.String(), txHash, string(payerType)})
+				receiptsCSV.Write([]string{dbPayout.Payee.String(), dbPayout.USD.String(), txHash, payerType.String()})
 			}
 			continue
 		}
@@ -292,7 +292,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Paye
 		if confirmedCount > 0 {
 			txHash := confirmed[0].Hash
 			payoutGroupStatus[dbPayout.PayoutGroupID] = txHash
-			receiptsCSV.Write([]string{dbPayout.Payee.String(), dbPayout.USD.String(), txHash, string(payerType)})
+			receiptsCSV.Write([]string{dbPayout.Payee.String(), dbPayout.USD.String(), txHash, payerType.String()})
 			payoutsConfirmed += numPayouts
 		}
 
