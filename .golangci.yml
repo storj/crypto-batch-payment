@@ -29,6 +29,7 @@ linters:
     - tenv                    # ensure we use t.SetEnv instead of os.SetEnv
     - unconvert               # remove unnecessary conversions
     - wastedassign
+    - staticcheck             # a lot of useful checks
     #TODO#- nilnil            # needs fixes; checks that we don't return a nil and no-error
     #TODO#- forcetypeassert   # needs work to replace unchecked interface type assertion
     #TODO#- gochecknoglobals  # needs work to remove globals
@@ -40,7 +41,6 @@ linters:
     #TODO#- whitespace        # checks for leading/trailing newlines
   disable:
     - nolintlint              # checks that nolint directives are correct
-    - staticcheck      # we already use staticcheck separately
     - asciicheck       # non-ascii is allowed
     - containedctx     # gives false positives, however might be good to re-evaluate
     - contextcheck     # doesn't look like it's useful
