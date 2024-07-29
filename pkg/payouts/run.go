@@ -27,7 +27,7 @@ type Config struct {
 	PromptConfirm func(label string) error
 }
 
-func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB, paymentPayer payer.Payer) error {
+func Preview(ctx context.Context, config Config, db *pipelinedb.DB, paymentPayer payer.Payer) error {
 	stats, err := db.Stats(ctx)
 	if err != nil {
 		return err
@@ -50,7 +50,7 @@ func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB,
 
 	estimatedSTORJ := storjtoken.FromUSD(stats.PendingUSD, storjQuote.Price, decimals)
 
-	fmt.Printf("**PAYMENT TYPE**............: %T\n", paymentPayer)
+	fmt.Printf("**PAYMENT TYPE**............: %s\n", paymentPayer)
 	fmt.Printf("Current STORJ Price.........: $%s\n", storjQuote.Price.String())
 	fmt.Println()
 	fmt.Printf("Total Payees................: %d\n", stats.Payees)
@@ -74,6 +74,7 @@ func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB,
 	if err != nil {
 		return err
 	}
+	fmt.Println()
 
 	if config.Drain {
 		if err := config.PromptConfirm("Drain"); err != nil {
@@ -85,6 +86,10 @@ func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB,
 		}
 	}
 
+	return nil
+}
+
+func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB, paymentPayer payer.Payer) error {
 	p, err := pipeline.New(paymentPayer, pipeline.Config{
 		Log:     log,
 		Quoter:  config.Quoter,

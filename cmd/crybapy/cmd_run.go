@@ -125,17 +125,20 @@ func doRun(config *runConfig) error {
 	}
 	defer func() { _ = db.Close() }()
 
-	err = payouts.Run(config.Ctx,
-		log,
-		payouts.Config{
-			Quoter:        quoter,
-			PipelineLimit: config.PipelineLimit,
-			TxDelay:       config.TxDelay,
-			Drain:         config.Drain,
-			PromptConfirm: promptConfirm,
-		},
-		db,
-		payer)
+	payoutsConfig := payouts.Config{
+		Quoter:        quoter,
+		PipelineLimit: config.PipelineLimit,
+		TxDelay:       config.TxDelay,
+		Drain:         config.Drain,
+		PromptConfirm: promptConfirm,
+	}
+
+	err = payouts.Preview(config.Ctx, payoutsConfig, db, payer)
+	if err != nil {
+		return err
+	}
+
+	err = payouts.Run(config.Ctx, log, payoutsConfig, db, payer)
 	if err != nil {
 		return err
 	}
