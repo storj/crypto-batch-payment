@@ -8,9 +8,10 @@ require (
 	github.com/manifoldco/promptui v0.8.0
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/mitchellh/go-homedir v1.1.0
+	github.com/pelletier/go-toml/v2 v2.2.2
 	github.com/shopspring/decimal v1.2.0
 	github.com/spf13/cobra v1.5.0
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 	github.com/zeebo/errs v1.2.2
 	github.com/zeebo/errs/v2 v2.0.3
 	github.com/zksync-sdk/zksync-sdk-go v0.0.0-20211119083613-58613b4d3d77
