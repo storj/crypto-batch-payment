@@ -1,9 +1,7 @@
 package payouts
 
 import (
-	"bytes"
 	"context"
-	stdcsv "encoding/csv"
 	"math/big"
 	"os"
 	"time"
@@ -13,6 +11,7 @@ import (
 	"storj.io/crypto-batch-payment/pkg/eth"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
+	"storj.io/crypto-batch-payment/pkg/receipts"
 	"storj.io/crypto-batch-payment/pkg/zksync"
 	"storj.io/crypto-batch-payment/pkg/zksyncera"
 
@@ -79,12 +78,6 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Type
 		return nil, err
 	}
 	csvPayouts := FromCSV(rows)
-
-	receiptsBuf := new(bytes.Buffer)
-	receiptsCSV := stdcsv.NewWriter(receiptsBuf)
-	if err := receiptsCSV.Write([]string{"wallet", "amount", "txhash", "mechanism"}); err != nil {
-		return nil, err
-	}
 
 	// Load the database
 	sink.ReportStatusf("Loading database...")
@@ -207,6 +200,8 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Type
 		}
 	}
 
+	var receipts receipts.Buffer
+
 	// For each payout, ensure it belongs to a payout group with a confirmed
 	// transaction. Reconfirm the transaction against the blockchain.
 	sink.ReportStatusf("Checking payouts status...")
@@ -215,9 +210,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Type
 	for _, dbPayout := range dbPayouts {
 		if txHash, ok := payoutGroupStatus[dbPayout.PayoutGroupID]; ok {
 			if txHash != "" {
-				if err := receiptsCSV.Write([]string{dbPayout.Payee.String(), dbPayout.USD.String(), txHash, payerType.String()}); err != nil {
-					return nil, errs.Wrap(err)
-				}
+				receipts.Emit(dbPayout.Payee, dbPayout.USD, txHash, payerType)
 			}
 			continue
 		}
@@ -295,9 +288,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Type
 		if confirmedCount > 0 {
 			txHash := confirmed[0].Hash
 			payoutGroupStatus[dbPayout.PayoutGroupID] = txHash
-			if err := receiptsCSV.Write([]string{dbPayout.Payee.String(), dbPayout.USD.String(), txHash, payerType.String()}); err != nil {
-				return nil, errs.Wrap(err)
-			}
+			receipts.Emit(dbPayout.Payee, dbPayout.USD, txHash, payerType)
 			payoutsConfirmed += numPayouts
 		}
 
@@ -319,9 +310,8 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Type
 	switch {
 	case receiptsOut == "":
 	case payoutsConfirmed == stats.Total || receiptsForce:
-		receiptsCSV.Flush()
 		sink.ReportStatusf("Writing receipts to %s...", receiptsOut)
-		if err := os.WriteFile(receiptsOut, receiptsBuf.Bytes(), 0644); err != nil {
+		if err := os.WriteFile(receiptsOut, receipts.Finalize(), 0644); err != nil {
 			return nil, errs.Wrap(err)
 		}
 	default:
