@@ -32,5 +32,5 @@ func (b *Buffer) init() {
 }
 
 func (b *Buffer) write(c1, c2, c3, c4 string) {
-	b.csv.Write([]string{c1, c2, c3, c4})
+	_ = b.csv.Write([]string{c1, c2, c3, c4})
 }
