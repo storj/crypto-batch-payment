@@ -10,12 +10,10 @@ import (
 type Type string
 
 const (
-	Eth        Type = "eth"
-	Sim        Type = "sim"
-	ZkSync     Type = "zksync"
-	ZkSyncEra  Type = "zksync-era"
-	ZkWithdraw Type = "zkwithdraw"
-	Polygon    Type = "polygon"
+	Eth       Type = "eth"
+	Sim       Type = "sim"
+	ZkSyncEra Type = "zksync-era"
+	Polygon   Type = "polygon"
 )
 
 func (pt Type) String() string {
@@ -29,12 +27,8 @@ func TypeFromString(t string) (Type, error) {
 		return Eth, nil
 	case "polygon":
 		return Polygon, nil
-	case "zksync":
-		return ZkSync, nil
 	case "zksync-era", "zksync2": // zksync2 for backcompat
 		return ZkSyncEra, nil
-	case "zkwithdraw":
-		return ZkWithdraw, nil
 	case "sim":
 		return Sim, nil
 	default:
