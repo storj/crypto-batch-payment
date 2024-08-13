@@ -7,16 +7,18 @@ import (
 
 	"go.uber.org/zap"
 
-	"storj.io/crypto-batch-payment/pkg/payer"
-	"storj.io/crypto-batch-payment/pkg/pipelinedb"
-
 	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
+	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipeline"
+	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 	"storj.io/crypto-batch-payment/pkg/storjtoken"
+	"storj.io/crypto-batch-payment/pkg/txparams"
 )
 
 type Config struct {
 	Quoter coinmarketcap.Quoter
+
+	GasCaps txparams.Getter
 
 	PipelineLimit int
 
@@ -38,16 +40,12 @@ func Preview(ctx context.Context, config Config, db *pipelinedb.DB, paymentPayer
 		return err
 	}
 
-	decimals, err := paymentPayer.GetTokenDecimals(ctx)
-	if err != nil {
-		return err
-	}
-
 	balance, err := paymentPayer.GetTokenBalance(ctx)
 	if err != nil {
 		return err
 	}
 
+	decimals := paymentPayer.Decimals()
 	estimatedSTORJ := storjtoken.FromUSD(stats.PendingUSD, storjQuote.Price, decimals)
 
 	fmt.Printf("**PAYMENT TYPE**............: %s\n", paymentPayer)
@@ -93,6 +91,7 @@ func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB,
 	p, err := pipeline.New(paymentPayer, pipeline.Config{
 		Log:     log,
 		Quoter:  config.Quoter,
+		GasCaps: config.GasCaps,
 		DB:      db,
 		Limit:   config.PipelineLimit,
 		Drain:   config.Drain,

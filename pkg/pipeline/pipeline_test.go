@@ -19,6 +19,7 @@ import (
 	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
+	"storj.io/crypto-batch-payment/pkg/txparams"
 
 	"storj.io/common/testcontext"
 )
@@ -166,6 +167,7 @@ func createTestPipeline(ctx context.Context, t *testing.T, db *pipelinedb.DB) (*
 		Quoter: &StaticQuoter{
 			value: decimal.New(2, 0),
 		},
+		GasCaps: txparams.FixedGasCaps{},
 	}
 
 	testPayer := NewTestPayer()
@@ -197,13 +199,17 @@ func (t *TestPayer) String() string {
 	return "test"
 }
 
+func (t *TestPayer) Decimals() int32 {
+	return 8
+}
+
 func (t *TestPayer) NextNonce(ctx context.Context) (uint64, error) {
 	ret := t.nextNonce
 	t.nextNonce++
 	return ret, nil
 }
 
-func (t *TestPayer) CheckPreconditions(ctx context.Context) ([]string, error) {
+func (t *TestPayer) CheckPreconditions(ctx context.Context, params payer.TransactionParams) ([]string, error) {
 	return nil, nil
 }
 
@@ -211,16 +217,12 @@ func (t *TestPayer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
 	return big.NewInt(10_000_00000000), nil
 }
 
-func (t *TestPayer) GetTokenDecimals(ctx context.Context) (int32, error) {
-	return 8, nil
-}
-
-func (t *TestPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payouts []*pipelinedb.Payout, nonce uint64, storjPrice decimal.Decimal) (tx payer.Transaction, from common.Address, err error) {
+func (t *TestPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, params payer.TransactionParams) (tx payer.Transaction, from common.Address, err error) {
 	hash := make([]byte, 32)
 	_, err = rand.Read(hash)
 	return payer.Transaction{
 		Hash:  common.BytesToHash(hash).String(),
-		Nonce: nonce,
+		Nonce: params.Nonce,
 		Raw:   make(map[string]string),
 	}, common.HexToAddress("0x94F31A2f6522dbf0594bf9c37F124fB6EAC4d9cd"), err
 

@@ -24,8 +24,6 @@ type Eth struct {
 	ERC20ContractAddress common.Address  `toml:"erc20_contract_address"`
 	ChainID              int             `toml:"chain_id"`
 	Owner                *common.Address `toml:"owner"`
-	MaxGas               *big.Int        `toml:"max_gas"`
-	GasTipCap            *big.Int        `toml:"gas_tip_cap"`
 }
 
 func (c Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
@@ -41,13 +39,6 @@ func (c Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
 	if c.ChainID == 0 {
 		c.ChainID = defaultEthChainID
 	}
-	if c.MaxGas == nil {
-		c.MaxGas, _ = new(big.Int).SetString(defaultMaxGas, 0)
-	}
-	if c.GasTipCap == nil {
-		c.GasTipCap, _ = new(big.Int).SetString(defaultGasTipCap, 0)
-	}
-
 	spenderKey, spenderAddress, err := loadSpenderKey(string(c.SpenderKeyPath))
 	if err != nil {
 		return nil, err
@@ -74,8 +65,6 @@ func (c Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
 		owner,
 		spenderKey,
 		big.NewInt(int64(c.ChainID)),
-		c.GasTipCap,
-		c.MaxGas,
 	)
 	if err != nil {
 		return nil, errs.Wrap(err)

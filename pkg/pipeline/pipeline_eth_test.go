@@ -16,6 +16,7 @@ import (
 
 	"storj.io/crypto-batch-payment/pkg/eth"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
+	"storj.io/crypto-batch-payment/pkg/txparams"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -860,14 +861,13 @@ func (test *PipelineTest) newPipeline(stepInCh chan chan []*pipelinedb.NonceGrou
 		test.ContractAddress,
 		owner.Address,
 		spenderKey,
-		big.NewInt(1337),
-		test.gasTipCap,
-		test.maxGas)
+		big.NewInt(1337))
 	test.R.NoError(err)
 	pipeline, err := New(payer, Config{
 		Log:          zaptest.NewLogger(test),
 		Owner:        owner.Address,
 		Quoter:       test.Quoter,
+		GasCaps:      txparams.FixedGasCaps{GasFeeCap: test.maxGas, GasTipCap: test.gasTipCap},
 		DB:           test.DB,
 		Limit:        test.limit,
 		stepInCh:     stepInCh,

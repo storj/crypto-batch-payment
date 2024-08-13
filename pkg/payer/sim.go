@@ -7,7 +7,6 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/shopspring/decimal"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
 
@@ -43,11 +42,15 @@ func (s *SimPayer) String() string {
 	return Sim.String()
 }
 
+func (s *SimPayer) Decimals() int32 {
+	return 8
+}
+
 func (s *SimPayer) NextNonce(ctx context.Context) (uint64, error) {
 	return uint64(0), nil
 }
 
-func (s *SimPayer) CheckPreconditions(ctx context.Context) ([]string, error) {
+func (s *SimPayer) CheckPreconditions(ctx context.Context, params TransactionParams) ([]string, error) {
 	return nil, nil
 }
 
@@ -55,11 +58,7 @@ func (s *SimPayer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
 	return big.NewInt(1000000000000), nil
 }
 
-func (s *SimPayer) GetTokenDecimals(ctx context.Context) (int32, error) {
-	return 8, nil
-}
-
-func (s *SimPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payouts []*pipelinedb.Payout, nonce uint64, storjPrice decimal.Decimal) (tx Transaction, from common.Address, err error) {
+func (s *SimPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, params TransactionParams) (tx Transaction, from common.Address, err error) {
 	hash := make([]byte, 32)
 	_, err = rand.Read(hash)
 	if err != nil {
@@ -68,7 +67,7 @@ func (s *SimPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, pa
 	txHash := common.BytesToHash(hash).String()
 	return Transaction{
 		Hash:  txHash,
-		Nonce: nonce,
+		Nonce: params.Nonce,
 		Raw: map[string]interface{}{
 			"hash": txHash,
 		},

@@ -14,6 +14,7 @@ import (
 	"storj.io/crypto-batch-payment/pkg/eth"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/storjtoken"
+	"storj.io/crypto-batch-payment/pkg/txparams"
 	"storj.io/crypto-batch-payment/pkg/zksyncera"
 )
 
@@ -82,39 +83,39 @@ func registerNodeAddress(cmd *cobra.Command, addr *string) {
 		"/home/storj/.ethereum/geth.ipc",
 		"Address of the ETH node to use")
 }
-func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeAddress string, chain string, spenderKeyPath string) (paymentPayer payer.Payer, err error) {
+
+func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeAddress string, chain string, spenderKeyPath string) (paymentPayer payer.Payer, gasCaps txparams.GasCaps, err error) {
 	spenderKey, spenderAddress, err := loadETHKey(spenderKeyPath, "spender")
 	if err != nil {
-		return nil, err
+		return nil, txparams.GasCaps{}, err
 	}
-	var maxGas big.Int
-	_, ok := maxGas.SetString(config.MaxGas, 10)
-	if !ok {
-		return nil, errs.New("invalid max gas setting")
+	maxGas := new(big.Int)
+	if _, ok := maxGas.SetString(config.MaxGas, 10); !ok {
+		return nil, txparams.GasCaps{}, errs.New("invalid max gas setting")
 	}
 
 	owner := spenderAddress
 	if config.Owner != "" {
 		owner, err = convertAddress(config.Owner, "owner")
 		if err != nil {
-			return nil, err
+			return nil, txparams.GasCaps{}, err
 		}
 	}
 
 	contractAddress, err := convertAddress(config.ContractAddress, "contract")
 	if err != nil {
-		return nil, err
+		return nil, txparams.GasCaps{}, err
 	}
 	chainID, err := convertInt(chain, 0, "chain-id")
 	if err != nil {
-		return nil, err
+		return nil, txparams.GasCaps{}, err
 	}
 
 	var maxFee *big.Int
 	if config.MaxFee != "" {
 		var tmp big.Int
 		if _, ok := tmp.SetString(config.MaxFee, 10); !ok {
-			return nil, errs.New("invalid max fee setting")
+			return nil, txparams.GasCaps{}, errs.New("invalid max fee setting")
 		}
 		maxFee = &tmp
 	}
@@ -122,29 +123,29 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 	var gasTipCap *big.Int
 	if config.GasTipCap != "" {
 		gasTipCap = new(big.Int)
-		_, ok = gasTipCap.SetString(config.GasTipCap, 10)
-		if !ok {
-			return nil, errs.New("invalid gas tip cap setting")
+		if _, ok := gasTipCap.SetString(config.GasTipCap, 10); !ok {
+			return nil, txparams.GasCaps{}, errs.New("invalid gas tip cap setting")
 		}
 		if gasTipCap.Cmp(big.NewInt(30*params.GWei)) > 0 {
-			return nil, errs.New("Gas tip cap is too high. Please use value less than 30 gwei")
+			return nil, txparams.GasCaps{}, errs.New("Gas tip cap is too high. Please use value less than 30 gwei")
 		}
 
 		if gasTipCap.Cmp(big.NewInt(int64(100))) < 0 {
-			return nil, errs.New("Gas tip cap is negligible. Please check if you really used wei unit (or set 0)")
+			return nil, txparams.GasCaps{}, errs.New("Gas tip cap is negligible. Please check if you really used wei unit (or set 0)")
 		}
 	}
 
 	pt, err := payer.TypeFromString(config.PayerType)
 	if err != nil {
-		return nil, errs.Wrap(err)
+		return nil, txparams.GasCaps{}, errs.Wrap(err)
 	}
+
 	switch pt {
 	case payer.Eth, payer.Polygon:
 		var client *ethclient.Client
 		client, err = ethclient.Dial(nodeAddress)
 		if err != nil {
-			return paymentPayer, errs.New("Failed to dial node %q: %v\n", nodeAddress, err)
+			return paymentPayer, txparams.GasCaps{}, errs.New("Failed to dial node %q: %v\n", nodeAddress, err)
 		}
 		defer client.Close()
 
@@ -154,12 +155,20 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			owner,
 			spenderKey,
 			chainID,
-			gasTipCap,
-			&maxGas,
 		)
 		if err != nil {
-			return nil, errs.Wrap(err)
+			return nil, txparams.GasCaps{}, errs.Wrap(err)
 		}
+
+		if gasTipCap == nil {
+			gasTipCap, err = client.SuggestGasTipCap(ctx)
+			if err != nil {
+				return nil, txparams.GasCaps{}, errs.Wrap(err)
+			}
+		}
+
+		gasCaps.GasFeeCap = maxGas
+		gasCaps.GasTipCap = gasTipCap
 	case payer.ZkSyncEra:
 		var paymasterAddress *common.Address
 		var paymasterPayload []byte
@@ -174,18 +183,18 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			spenderKey,
 			int(chainID.Int64()),
 			paymasterAddress,
-			paymasterPayload,
-			maxFee)
+			paymasterPayload)
 		if err != nil {
-			return nil, errs.Wrap(err)
+			return nil, txparams.GasCaps{}, errs.Wrap(err)
 		}
+		gasCaps.GasFeeCap = maxFee
 	case payer.Sim:
 		paymentPayer, err = payer.NewSimPayer()
 		if err != nil {
-			return nil, errs.Wrap(err)
+			return nil, txparams.GasCaps{}, errs.Wrap(err)
 		}
 	default:
-		return nil, errs.New("unsupported payer type: %v", config.PayerType)
+		return nil, txparams.GasCaps{}, errs.New("unsupported payer type: %v", config.PayerType)
 	}
-	return paymentPayer, nil
+	return paymentPayer, gasCaps, nil
 }

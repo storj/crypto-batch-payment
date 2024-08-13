@@ -14,6 +14,7 @@ import (
 	"storj.io/crypto-batch-payment/pkg/payouts"
 	"storj.io/crypto-batch-payment/pkg/pipeline"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
+	"storj.io/crypto-batch-payment/pkg/txparams"
 )
 
 type payerTransferConfig struct {
@@ -63,7 +64,7 @@ func doPayerTransfer(config *payerTransferConfig, spenderKeyPath string) error {
 	}
 
 	fmt.Println("Running ad-hoc payout (single transfer)...")
-	payer, err := CreatePayer(config.Ctx, log, config.PayerConfig, config.NodeAddress, config.ChainID, spenderKeyPath)
+	payer, gasCaps, err := CreatePayer(config.Ctx, log, config.PayerConfig, config.NodeAddress, config.ChainID, spenderKeyPath)
 	if err != nil {
 		return err
 	}
@@ -112,7 +113,7 @@ func doPayerTransfer(config *payerTransferConfig, spenderKeyPath string) error {
 					LastUpdated: time.Now(),
 				}, err
 			}),
-
+			GasCaps:       txparams.FixedGasCaps(gasCaps),
 			PipelineLimit: pipeline.DefaultLimit,
 			TxDelay:       pipeline.DefaultTxDelay,
 			Drain:         false,

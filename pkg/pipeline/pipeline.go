@@ -7,16 +7,16 @@ import (
 	"math/big"
 	"time"
 
+	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
+	"storj.io/crypto-batch-payment/pkg/storjtoken"
+	"storj.io/crypto-batch-payment/pkg/txparams"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
-
-	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
-	"storj.io/crypto-batch-payment/pkg/storjtoken"
 )
 
 const (
@@ -55,6 +55,9 @@ type Config struct {
 	// Quoter is used to get price quotes for STORJ token
 	Quoter coinmarketcap.Quoter
 
+	// GasCaps gets caps to gas parameters
+	GasCaps txparams.Getter
+
 	// DB is the the payout database
 	DB *pipelinedb.DB
 
@@ -86,6 +89,7 @@ type Pipeline struct {
 
 	owner   common.Address
 	quoter  coinmarketcap.Quoter
+	gasCaps txparams.Getter
 	db      *pipelinedb.DB
 	limit   int
 	txDelay time.Duration
@@ -109,6 +113,7 @@ func New(payer payer.Payer, config Config) (*Pipeline, error) {
 		log:          config.Log,
 		owner:        config.Owner,
 		quoter:       config.Quoter,
+		gasCaps:      config.GasCaps,
 		db:           config.DB,
 		limit:        config.Limit,
 		txDelay:      config.TxDelay,
@@ -125,8 +130,7 @@ func (p *Pipeline) ProcessPayouts(ctx context.Context) error {
 		zap.Bool("drain", p.drain),
 	)
 
-	err := p.initPayout(ctx)
-	if err != nil {
+	if err := p.initPayout(ctx); err != nil {
 		return err
 	}
 
@@ -340,21 +344,53 @@ checkLoop:
 }
 
 func (p *Pipeline) sendTransaction(ctx context.Context, payoutGroupID int64, nonce uint64) (*pipelinedb.Transaction, error) {
-	payouts, err := p.db.FetchPayoutGroupPayouts(ctx, payoutGroupID)
+	gasCaps, err := p.gasCaps.GetGasCaps(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(payouts) == 0 {
+
+	txLog := p.log.With(
+		zap.Int64("payout-group-id", payoutGroupID),
+		zap.Stringer("owner", p.owner),
+		zap.Uint64("nonce", nonce),
+	)
+
+	payouts, err := p.db.FetchPayoutGroupPayouts(ctx, payoutGroupID)
+	switch {
+	case err != nil:
+		return nil, err
+	case len(payouts) == 0:
 		return nil, errs.New("no payouts associated with transfer %d", payoutGroupID)
+	case len(payouts) > 1:
+		return nil, errs.New("multitransfer is not supported")
 	}
 
-	sumUSD := decimal.Zero
-	for _, p := range payouts {
-		sumUSD = decimal.Sum(sumUSD, p.USD)
+	payout := payouts[0]
+	txLog = txLog.With(zap.Stringer("usd", payout.USD))
+
+	storjPrice, err := p.getStorjPrice(ctx)
+	if err != nil {
+		return nil, err
+	}
+	txLog = txLog.With(zap.Stringer("storj-price", storjPrice))
+
+	storjTokens := storjtoken.FromUSD(payout.USD, storjPrice, p.payer.Decimals())
+	txLog = txLog.With(zap.Stringer("storj-tokens", storjTokens))
+
+	if storjTokens.Cmp(zero) <= 0 {
+		txLog.Error("STORJ token amount must be greater than zero")
+		return nil, errs.New("cannot transfer %s tokens for payout group %d: must be more than zero", storjTokens, payoutGroupID)
+	}
+
+	params := payer.TransactionParams{
+		Nonce:   nonce,
+		Payee:   payout.Payee,
+		Tokens:  storjTokens,
+		GasCaps: gasCaps,
 	}
 
 	for {
-		unmet, err := p.payer.CheckPreconditions(ctx)
+		unmet, err := p.payer.CheckPreconditions(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -369,45 +405,18 @@ func (p *Pipeline) sendTransaction(ctx context.Context, payoutGroupID int64, non
 		}
 	}
 
-	decimals, err := p.payer.GetTokenDecimals(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	storjPrice, err := p.getStorjPrice(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	storjTokens := storjtoken.FromUSD(sumUSD, storjPrice, decimals)
-	if storjTokens.Cmp(zero) <= 0 {
-		p.log.Error("STORJ token amount must be greater than zero",
-			zap.Int64("payout group", payoutGroupID),
-			zap.String("usd", sumUSD.String()),
-			zap.String("price", storjPrice.String()),
-			zap.String("tokens", storjTokens.String()),
-		)
-		return nil, errs.New("cannot transfer %s tokens for payout group %d: must be more than zero", storjTokens, payoutGroupID)
-	}
-
 	// Check the STORJ balance to make sure there is enough.
 	storjBalance, err := p.payer.GetTokenBalance(ctx)
 	if err != nil {
 		return nil, err
 	}
+	txLog = txLog.With(zap.Stringer("storj-balance", storjBalance))
+
 	if storjBalance.Cmp(storjTokens) < 0 {
 		return nil, errs.New("not enough STORJ balance to cover transfer (%s < %s)", storjBalance, storjTokens)
 	}
 
-	txLog := p.log.With(
-		zap.Uint64("nonce", nonce),
-		zap.Int64("payout-group-id", payoutGroupID),
-		zap.String("owner", p.owner.String()),
-		zap.String("storj-price", storjPrice.String()),
-		zap.String("storj-tokens", storjTokens.String()),
-		zap.String("storj-balance", storjBalance.String()))
-
-	rawTx, from, err := p.payer.CreateRawTransaction(ctx, txLog, payouts, nonce, storjPrice)
+	rawTx, from, err := p.payer.CreateRawTransaction(ctx, txLog, params)
 	if err != nil {
 		return nil, err
 	}

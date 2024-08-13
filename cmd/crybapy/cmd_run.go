@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
+	"storj.io/crypto-batch-payment/pkg/txparams"
 
 	"github.com/spf13/cobra"
 	"github.com/zeebo/errs"
@@ -113,7 +114,7 @@ func doRun(config *runConfig) error {
 	}
 
 	fmt.Printf("Running %q payout...\n", config.Name)
-	payer, err := CreatePayer(config.Ctx, log, config.PayerConfig, config.NodeAddress, config.ChainID, config.SpenderKeyPath)
+	payer, gasCaps, err := CreatePayer(config.Ctx, log, config.PayerConfig, config.NodeAddress, config.ChainID, config.SpenderKeyPath)
 	if err != nil {
 		return err
 	}
@@ -127,6 +128,7 @@ func doRun(config *runConfig) error {
 
 	payoutsConfig := payouts.Config{
 		Quoter:        quoter,
+		GasCaps:       txparams.FixedGasCaps(gasCaps),
 		PipelineLimit: config.PipelineLimit,
 		TxDelay:       config.TxDelay,
 		Drain:         config.Drain,
