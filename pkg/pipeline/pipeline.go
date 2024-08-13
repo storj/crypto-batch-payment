@@ -4,19 +4,19 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"time"
 
+	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
+	"storj.io/crypto-batch-payment/pkg/storjtoken"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
-
-	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
-	"storj.io/crypto-batch-payment/pkg/storjtoken"
 )
 
 const (
@@ -40,7 +40,17 @@ const (
 var (
 	// zero is a big int set to 0 for convenience.
 	zero = big.NewInt(0)
+
+	// errSkipped is returned from prepareTransaction when the
+	// transaction fees are too high relative to the payout amount.
+	errSkipped = errors.New("max fee exceeded")
+
+	// errMaxFeeExceeded is returned from prepareTransaction when the
+	// transaction is estimated to exceed the MaxFeeTolerationUSD in fees.
+	errMaxFeeExceeded = errors.New("max fee exceeded")
 )
+
+type sleepFunc = func(context.Context, time.Duration) error
 
 type Config struct {
 	// Log is the logger for logging pipeline progress
@@ -54,6 +64,16 @@ type Config struct {
 
 	// Quoter is used to get price quotes for STORJ token
 	Quoter coinmarketcap.Quoter
+
+	// ThresholdDivisor divides a payout amount to determine the fee threshold.
+	// If a payout fee is larger than the fee threshold then the payout is
+	// skipped. If ThresholdDivisor <= 0, no payouts will be skipped.
+	ThresholdDivisor decimal.Decimal
+
+	// MaxFeeTolerationUSD is the maximum fee to tolerate for a single
+	// transaction, in USD. If MaxFeeTolerationUSD <= zero, no maximum is
+	// enforced.
+	MaxFeeTolerationUSD decimal.Decimal
 
 	// DB is the the payout database
 	DB *pipelinedb.DB
@@ -79,42 +99,62 @@ type Config struct {
 
 	// test hook used to manipulate the polling interval
 	pollInterval time.Duration
+
+	// test hook used for sleeping so we aren't dependent on real time
+	sleep sleepFunc
 }
 
 type Pipeline struct {
 	log *zap.Logger
 
-	owner   common.Address
-	quoter  coinmarketcap.Quoter
-	db      *pipelinedb.DB
-	limit   int
-	txDelay time.Duration
-	drain   bool
-	payer   payer.Payer
+	owner               common.Address
+	quoter              coinmarketcap.Quoter
+	thresholdDivisor    decimal.Decimal
+	maxFeeTolerationUSD decimal.Decimal
+	db                  *pipelinedb.DB
+	limit               int
+	txDelay             time.Duration
+	drain               bool
+	payer               payer.Payer
 
 	pollInterval  time.Duration
+	sleep         sleepFunc
 	expectedNonce uint64
 	nonceGroups   []*pipelinedb.NonceGroup
 }
 
 func New(payer payer.Payer, config Config) (*Pipeline, error) {
+	switch {
+	case config.Log == nil:
+		return nil, errors.New("log is required")
+	case config.Quoter == nil:
+		return nil, errors.New("quoter is required")
+	case config.DB == nil:
+		return nil, errors.New("db is required")
+	}
 	if config.Limit == 0 {
 		config.Limit = DefaultLimit
 	}
 	if config.pollInterval == 0 {
 		config.pollInterval = txStatusPollInterval
 	}
+	if config.sleep == nil {
+		config.sleep = sleep
+	}
 
 	return &Pipeline{
-		log:          config.Log,
-		owner:        config.Owner,
-		quoter:       config.Quoter,
-		db:           config.DB,
-		limit:        config.Limit,
-		txDelay:      config.TxDelay,
-		drain:        config.Drain,
-		pollInterval: config.pollInterval,
-		payer:        payer,
+		log:                 config.Log,
+		owner:               config.Owner,
+		quoter:              config.Quoter,
+		thresholdDivisor:    config.ThresholdDivisor,
+		maxFeeTolerationUSD: config.MaxFeeTolerationUSD,
+		db:                  config.DB,
+		limit:               config.Limit,
+		txDelay:             config.TxDelay,
+		drain:               config.Drain,
+		pollInterval:        config.pollInterval,
+		sleep:               config.sleep,
+		payer:               payer,
 	}, nil
 }
 
@@ -125,8 +165,7 @@ func (p *Pipeline) ProcessPayouts(ctx context.Context) error {
 		zap.Bool("drain", p.drain),
 	)
 
-	err := p.initPayout(ctx)
-	if err != nil {
+	if err := p.initPayout(ctx); err != nil {
 		return err
 	}
 
@@ -176,7 +215,7 @@ func (p *Pipeline) initPayout(ctx context.Context) error {
 
 func (p *Pipeline) payoutStep(ctx context.Context) (bool, error) {
 	// Trim off nonce groups that have no more transactions. This only
-	// happens when a nonce group has been confirmed or failed.
+	// happens when a nonce group has been confirmed, failed or is being skipped.
 	var finished int
 	for len(p.nonceGroups) > 0 && len(p.nonceGroups[0].Txs) == 0 {
 		p.log.Info("Nonce group finished", zap.Uint64("nonce", p.nonceGroups[0].Nonce))
@@ -187,63 +226,9 @@ func (p *Pipeline) payoutStep(ctx context.Context) (bool, error) {
 		p.log.Info("Pipeline status", zap.Int("len", len(p.nonceGroups)), zap.Int("limit", p.limit))
 	}
 
-	// Fill up the pipeline
-	var added bool
-	for i := 0; len(p.nonceGroups) < p.limit && !p.drain; i++ {
-		payoutGroup, err := p.db.FetchFirstUnfinishedUnattachedPayoutGroup(ctx)
-		if err != nil {
-			return true, err
-		}
-		if payoutGroup == nil {
-			// no payout groups to add
-			break
-		}
-
-		if i > 0 && p.txDelay > 0 {
-			if err := sleepFor(ctx, p.txDelay); err != nil {
-				return true, err
-			}
-		}
-
-		// Either continue with the next nonce (if there is a nonce group
-		// to increment from) or grab the account nonce according to the
-		// blockchain.
-		var nextNonce uint64
-		if len(p.nonceGroups) > 0 {
-			nextNonce = p.nonceGroups[len(p.nonceGroups)-1].Nonce + 1
-			p.log.Info("Nonce from nonce group", zap.Uint64("nextNonce", nextNonce))
-		} else {
-			nextNonce, err = p.payer.NextNonce(ctx)
-			if err != nil {
-				return true, errs.New("unable to obtain next nonce from blockchain: %v", err)
-			}
-			p.log.Info("Nonce from chain", zap.Uint64("nextNonce", nextNonce))
-			// NonceAt can return an earlier nonce than expected if the
-			// just-mined block cleared out the pipeline but the timing is
-			// weird enough for the node to not return right nonce based on
-			// the transactions in that block. Bail out for now if that
-			// happens to prevent recording and sending a transaction with
-			// a known bad nonce.
-			// TODO: we could spin here for a time until the node returns
-			// the expected nonce...
-			if p.expectedNonce > 0 && nextNonce < p.expectedNonce {
-				return true, errs.New("node returned used nonce %d; expected >= %d", nextNonce, p.expectedNonce)
-			}
-			p.expectedNonce = nextNonce + 1
-		}
-
-		tx, err := p.sendTransaction(ctx, payoutGroup.ID, nextNonce)
-		if err != nil {
-			return true, err
-		}
-
-		p.nonceGroups = append(p.nonceGroups, &pipelinedb.NonceGroup{
-			Nonce:         tx.Nonce,
-			PayoutGroupID: payoutGroup.ID,
-			Txs:           []pipelinedb.Transaction{*tx},
-		})
-		p.log.Debug("Pipeline status", zap.Int("len", len(p.nonceGroups)), zap.Int("limit", p.limit))
-		added = true
+	added, err := p.fillPipeline(ctx)
+	if err != nil {
+		return true, err
 	}
 
 	// Pipeline is empty
@@ -273,6 +258,75 @@ func (p *Pipeline) payoutStep(ctx context.Context) (bool, error) {
 		return true, err
 	}
 	return false, nil
+}
+
+func (p *Pipeline) fillPipeline(ctx context.Context) (_ bool, err error) {
+	if len(p.nonceGroups) >= p.limit || p.drain {
+		return false, nil
+	}
+
+	// Fill up the pipeline
+	var added int
+	for i := 0; len(p.nonceGroups) < p.limit; i++ {
+		payoutGroup, err := p.db.FetchFirstUnfinishedUnattachedPayoutGroup(ctx)
+		if err != nil {
+			return false, err
+		}
+		if payoutGroup == nil {
+			// no payout groups to add
+			break
+		}
+
+		// Either continue with the next nonce (if there is a nonce group
+		// to increment from) or grab the account nonce according to the
+		// blockchain.
+		var nextNonce uint64
+		if len(p.nonceGroups) > 0 {
+			nextNonce = p.nonceGroups[len(p.nonceGroups)-1].Nonce + 1
+			p.log.Info("Nonce from nonce group", zap.Uint64("nextNonce", nextNonce))
+		} else {
+			nextNonce, err = p.payer.NextNonce(ctx)
+			if err != nil {
+				return false, errs.New("unable to obtain next nonce from blockchain: %v", err)
+			}
+			p.log.Info("Nonce from chain", zap.Uint64("nextNonce", nextNonce))
+			// NonceAt can return an earlier nonce than expected if the
+			// just-mined block cleared out the pipeline but the timing is
+			// weird enough for the node to not return right nonce based on
+			// the transactions in that block. Bail out for now if that
+			// happens to prevent recording and sending a transaction with
+			// a known bad nonce.
+			// TODO: we could spin here for a time until the node returns
+			// the expected nonce...
+			if p.expectedNonce > 0 && nextNonce < p.expectedNonce {
+				return false, errs.New("node returned used nonce %d; expected >= %d", nextNonce, p.expectedNonce)
+			}
+		}
+
+		tx, err := p.sendTransaction(ctx, payoutGroup.ID, nextNonce)
+		switch {
+		case errors.Is(err, errSkipped):
+			continue
+		case err != nil:
+			return false, err
+		}
+
+		p.expectedNonce = nextNonce + 1
+		p.nonceGroups = append(p.nonceGroups, &pipelinedb.NonceGroup{
+			Nonce:         tx.Nonce,
+			PayoutGroupID: payoutGroup.ID,
+			Txs:           []pipelinedb.Transaction{*tx},
+		})
+		p.log.Debug("Pipeline status", zap.Int("len", len(p.nonceGroups)), zap.Int("limit", p.limit))
+
+		if err := sleepFor(ctx, p.txDelay); err != nil {
+			return false, err
+		}
+
+		added++
+	}
+
+	return added > 0, nil
 }
 
 func (p *Pipeline) checkNonceGroups(ctx context.Context) (bool, error) {
@@ -306,11 +360,17 @@ checkLoop:
 			// All the transactions have been dropped. Send another transaction for
 			// this nonce group. Indicate to the caller that there was a drop.
 			tx, err := p.sendTransaction(ctx, p.nonceGroups[i].PayoutGroupID, p.nonceGroups[i].Nonce)
-			if err != nil {
+			switch {
+			case errors.Is(err, errSkipped):
+				// Cannot retry the nonce group since it has dropped below
+				// the fee threshold.
+				p.nonceGroups[i].Txs = nil
+			case err != nil:
 				return true, err
+			default:
+				p.nonceGroups[i].Txs = append(p.nonceGroups[i].Txs, *tx)
+				break checkLoop
 			}
-			p.nonceGroups[i].Txs = append(p.nonceGroups[i].Txs, *tx)
-			break checkLoop
 		case pipelinedb.TxPending:
 			// This group has not confirmed/failed. Don't look at the rest
 			// until we know it's fate. It is dangerous to look further
@@ -340,53 +400,63 @@ checkLoop:
 }
 
 func (p *Pipeline) sendTransaction(ctx context.Context, payoutGroupID int64, nonce uint64) (*pipelinedb.Transaction, error) {
-	payouts, err := p.db.FetchPayoutGroupPayouts(ctx, payoutGroupID)
-	if err != nil {
-		return nil, err
-	}
-	if len(payouts) == 0 {
-		return nil, errs.New("no payouts associated with transfer %d", payoutGroupID)
-	}
-
-	sumUSD := decimal.Zero
-	for _, p := range payouts {
-		sumUSD = decimal.Sum(sumUSD, p.USD)
-	}
-
 	for {
-		unmet, err := p.payer.CheckPreconditions(ctx)
-		if err != nil {
+		tx, err := p.trySendTransaction(ctx, payoutGroupID, nonce)
+		switch {
+		case errors.Is(err, errMaxFeeExceeded):
+			// handled below
+		case err != nil:
+			return nil, err
+		default:
+			return tx, nil
+		}
+
+		p.log.Info("Max fee toleration was exceeded; waiting 5 seconds before trying again")
+		if err := p.sleep(ctx, 5*time.Second); err != nil {
 			return nil, err
 		}
-		if len(unmet) == 0 {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(5 * time.Second):
-			p.log.Info("One or more preconditions are not met, waiting for 5 seconds", zap.Strings("unmet", unmet))
-		}
+	}
+}
+
+func (p *Pipeline) trySendTransaction(ctx context.Context, payoutGroupID int64, nonce uint64) (*pipelinedb.Transaction, error) {
+	txLog := p.log.With(
+		zap.Int64("payout-group-id", payoutGroupID),
+		zap.Stringer("owner", p.owner),
+		zap.Uint64("nonce", nonce),
+	)
+
+	payouts, err := p.db.FetchPayoutGroupPayouts(ctx, payoutGroupID)
+	switch {
+	case err != nil:
+		return nil, err
+	case len(payouts) == 0:
+		return nil, errs.New("no payouts associated with transfer %d", payoutGroupID)
+	case len(payouts) > 1:
+		return nil, errs.New("multitransfer is not supported")
 	}
 
-	decimals, err := p.payer.GetTokenDecimals(ctx)
+	payout := payouts[0]
+
+	txLog = txLog.With(zap.Stringer("usd", payout.USD))
+
+	ethPrice, err := p.getQuote(ctx, coinmarketcap.ETH)
 	if err != nil {
 		return nil, err
 	}
+	txLog = txLog.With(zap.Stringer("eth-price", ethPrice))
 
-	storjPrice, err := p.getStorjPrice(ctx)
+	// Calculate how many STORJ tokens are required to cover the payout.
+	storjPrice, err := p.getQuote(ctx, coinmarketcap.STORJ)
 	if err != nil {
 		return nil, err
 	}
+	txLog = txLog.With(zap.Stringer("storj-price", storjPrice))
 
-	storjTokens := storjtoken.FromUSD(sumUSD, storjPrice, decimals)
+	storjTokens := storjtoken.FromUSD(payout.USD, storjPrice, p.payer.Decimals())
+	txLog = txLog.With(zap.Stringer("storj-tokens", storjTokens))
+
 	if storjTokens.Cmp(zero) <= 0 {
-		p.log.Error("STORJ token amount must be greater than zero",
-			zap.Int64("payout group", payoutGroupID),
-			zap.String("usd", sumUSD.String()),
-			zap.String("price", storjPrice.String()),
-			zap.String("tokens", storjTokens.String()),
-		)
+		txLog.Error("STORJ token amount must be greater than zero")
 		return nil, errs.New("cannot transfer %s tokens for payout group %d: must be more than zero", storjTokens, payoutGroupID)
 	}
 
@@ -395,21 +465,51 @@ func (p *Pipeline) sendTransaction(ctx context.Context, payoutGroupID int64, non
 	if err != nil {
 		return nil, err
 	}
+	txLog = txLog.With(zap.Stringer("storj-balance", storjBalance))
+
 	if storjBalance.Cmp(storjTokens) < 0 {
 		return nil, errs.New("not enough STORJ balance to cover transfer (%s < %s)", storjBalance, storjTokens)
 	}
 
-	txLog := p.log.With(
-		zap.Uint64("nonce", nonce),
-		zap.Int64("payout-group-id", payoutGroupID),
-		zap.String("owner", p.owner.String()),
-		zap.String("storj-price", storjPrice.String()),
-		zap.String("storj-tokens", storjTokens.String()),
-		zap.String("storj-balance", storjBalance.String()))
+	params := payer.TransactionParams{
+		Nonce:  nonce,
+		Payee:  payout.Payee,
+		Tokens: storjTokens,
+	}
 
-	rawTx, from, err := p.payer.CreateRawTransaction(ctx, txLog, payouts, nonce, storjPrice)
+	rawTx, from, err := p.payer.CreateRawTransaction(ctx, txLog, params)
 	if err != nil {
 		return nil, err
+	}
+
+	maxFeeGWEI := decimal.NewFromInt(int64(rawTx.GasLimit)).Mul(decimal.NewFromBigInt(rawTx.GasFeeCap, 0))
+	maxFeeUSD := ethPrice.Mul(maxFeeGWEI).Shift(-18)
+
+	txLog = txLog.With(
+		zap.Uint64("gas-limit", rawTx.GasLimit),
+		zap.Stringer("gas-fee-cap", rawTx.GasFeeCap),
+		zap.Stringer("max-fee-usd", maxFeeUSD),
+	)
+
+	if p.maxFeeTolerationUSD.IsPositive() && p.maxFeeTolerationUSD.Cmp(maxFeeUSD) < 0 {
+		txLog.Warn("Payout max fee exceeds the max fee toleration", zap.Stringer("max-fee-toleration-usd", p.maxFeeTolerationUSD))
+		return nil, errMaxFeeExceeded
+	}
+
+	if p.thresholdDivisor.IsPositive() {
+		thresholdUSD := payout.USD.Div(p.thresholdDivisor)
+		if !payout.Mandatory && thresholdUSD.Cmp(maxFeeUSD) < 0 {
+			txLog.Warn("Skipping transaction because payout is below the minimum payout threshold", zap.Stringer("threshold-usd", thresholdUSD))
+			if err := p.db.SetPayoutGroupStatus(ctx, payoutGroupID, pipelinedb.PayoutGroupSkipped); err != nil {
+				return nil, errs.Wrap(err)
+			}
+			return nil, errSkipped
+		}
+	}
+
+	// Clear the payout group status
+	if err := p.db.SetPayoutGroupStatus(ctx, payoutGroupID, ""); err != nil {
+		return nil, errs.Wrap(err)
 	}
 
 	rawTxJSON, err := json.Marshal(rawTx.Raw)
@@ -433,24 +533,30 @@ func (p *Pipeline) sendTransaction(ctx context.Context, payoutGroupID int64, non
 		return nil, err
 	}
 
-	err = p.payer.SendTransaction(ctx, txLog, rawTx)
-	return tx, err
+	if err := p.payer.SendTransaction(ctx, txLog, rawTx); err != nil {
+		return nil, err
+	}
+	return tx, nil
 }
 
-func (p *Pipeline) getStorjPrice(ctx context.Context) (decimal.Decimal, error) {
-	storjQuote, err := p.quoter.GetQuote(ctx, coinmarketcap.STORJ)
+func (p *Pipeline) getQuote(ctx context.Context, symbol coinmarketcap.Symbol) (decimal.Decimal, error) {
+	storjQuote, err := p.quoter.GetQuote(ctx, symbol)
 	if err != nil {
-		return decimal.Decimal{}, err
+		return decimal.Decimal{}, errs.Wrap(err)
 	}
 	return storjQuote.Price, nil
 }
 
 func sleepFor(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
 	timer := time.NewTimer(d)
 	select {
 	case <-timer.C:
 		return nil
 	case <-ctx.Done():
+		timer.Stop()
 		return ctx.Err()
 	}
 }
@@ -464,4 +570,20 @@ func youngestTransactionTime(txs []pipelinedb.Transaction) time.Time {
 		}
 	}
 	return youngest
+}
+
+func safeBigInt(b *big.Int) string {
+	if b == nil {
+		return "unset"
+	}
+	return b.String()
+}
+
+func sleep(ctx context.Context, duration time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(5 * time.Second):
+		return nil
+	}
 }

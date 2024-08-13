@@ -8,6 +8,7 @@ import (
 
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 
+	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 	"github.com/zeebo/errs"
 
@@ -118,6 +119,11 @@ func doRun(config *runConfig) error {
 		return err
 	}
 
+	maxFeeUSD, err := parseOptionalMaxFeeUSD(config.MaxFeeUSD)
+	if err != nil {
+		return err
+	}
+
 	dbPath := payouts.DBPathFromDir(runDir)
 	db, err := pipelinedb.OpenDB(context.Background(), dbPath, false)
 	if err != nil {
@@ -126,11 +132,12 @@ func doRun(config *runConfig) error {
 	defer func() { _ = db.Close() }()
 
 	payoutsConfig := payouts.Config{
-		Quoter:        quoter,
-		PipelineLimit: config.PipelineLimit,
-		TxDelay:       config.TxDelay,
-		Drain:         config.Drain,
-		PromptConfirm: promptConfirm,
+		Quoter:              quoter,
+		PipelineLimit:       config.PipelineLimit,
+		TxDelay:             config.TxDelay,
+		Drain:               config.Drain,
+		PromptConfirm:       promptConfirm,
+		MaxFeeTolerationUSD: maxFeeUSD,
 	}
 
 	err = payouts.Preview(config.Ctx, payoutsConfig, db, payer)
@@ -149,4 +156,14 @@ func doRun(config *runConfig) error {
 
 	fmt.Println("Payouts complete.")
 	return nil
+}
+
+func parseOptionalMaxFeeUSD(s string) (maxFeeUSD decimal.Decimal, err error) {
+	if s != "" {
+		maxFeeUSD, err = decimal.NewFromString(s)
+		if err != nil {
+			return decimal.Decimal{}, errs.New("invalid max fee value: %v", err)
+		}
+	}
+	return maxFeeUSD, nil
 }

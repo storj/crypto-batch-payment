@@ -9,8 +9,8 @@ import (
 )
 
 type CoinMarketCap struct {
-	APIURL      string   `toml:"api_url"`
 	APIKeyPath  Path     `toml:"api_key_path"`
+	APIURL      string   `toml:"api_url"`
 	CacheExpiry Duration `toml:"cache_expiry"`
 }
 

@@ -273,6 +273,7 @@ func (obj *sqlite3DB) Schema() string {
 	attempts INTEGER NOT NULL,
 	spender TEXT,
 	owner TEXT,
+	bonus_multiplier TEXT,
 	PRIMARY KEY ( pk )
 );
 CREATE TABLE payout_group (
@@ -281,6 +282,7 @@ CREATE TABLE payout_group (
 	updated_at TIMESTAMP NOT NULL,
 	id INTEGER NOT NULL,
 	final_tx_hash TEXT,
+	status TEXT,
 	PRIMARY KEY ( pk ),
 	UNIQUE ( id )
 );
@@ -291,6 +293,7 @@ CREATE TABLE payout (
 	payee TEXT NOT NULL,
 	usd TEXT NOT NULL,
 	payout_group_id INTEGER NOT NULL REFERENCES payout_group( id ),
+	mandatory INTEGER NOT NULL,
 	PRIMARY KEY ( pk )
 );
 CREATE TABLE tx (
@@ -375,26 +378,29 @@ nextval:
 }
 
 type Metadata struct {
-	Pk        int64
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Version   int
-	Attempts  int
-	Spender   *string
-	Owner     *string
+	Pk              int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	Version         int
+	Attempts        int
+	Spender         *string
+	Owner           *string
+	BonusMultiplier *string
 }
 
 func (Metadata) _Table() string { return "metadata" }
 
 type Metadata_Create_Fields struct {
-	Spender Metadata_Spender_Field
-	Owner   Metadata_Owner_Field
+	Spender         Metadata_Spender_Field
+	Owner           Metadata_Owner_Field
+	BonusMultiplier Metadata_BonusMultiplier_Field
 }
 
 type Metadata_Update_Fields struct {
-	Attempts Metadata_Attempts_Field
-	Spender  Metadata_Spender_Field
-	Owner    Metadata_Owner_Field
+	Attempts        Metadata_Attempts_Field
+	Spender         Metadata_Spender_Field
+	Owner           Metadata_Owner_Field
+	BonusMultiplier Metadata_BonusMultiplier_Field
 }
 
 type Metadata_Pk_Field struct {
@@ -558,22 +564,57 @@ func (f Metadata_Owner_Field) value() interface{} {
 
 func (Metadata_Owner_Field) _Column() string { return "owner" }
 
+type Metadata_BonusMultiplier_Field struct {
+	_set   bool
+	_null  bool
+	_value *string
+}
+
+func Metadata_BonusMultiplier(v string) Metadata_BonusMultiplier_Field {
+	return Metadata_BonusMultiplier_Field{_set: true, _value: &v}
+}
+
+func Metadata_BonusMultiplier_Raw(v *string) Metadata_BonusMultiplier_Field {
+	if v == nil {
+		return Metadata_BonusMultiplier_Null()
+	}
+	return Metadata_BonusMultiplier(*v)
+}
+
+func Metadata_BonusMultiplier_Null() Metadata_BonusMultiplier_Field {
+	return Metadata_BonusMultiplier_Field{_set: true, _null: true}
+}
+
+func (f Metadata_BonusMultiplier_Field) isnull() bool { return !f._set || f._null || f._value == nil }
+
+func (f Metadata_BonusMultiplier_Field) value() interface{} {
+	if !f._set || f._null {
+		return nil
+	}
+	return f._value
+}
+
+func (Metadata_BonusMultiplier_Field) _Column() string { return "bonus_multiplier" }
+
 type PayoutGroup struct {
 	Pk          int64
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Id          int64
 	FinalTxHash *string
+	Status      *string
 }
 
 func (PayoutGroup) _Table() string { return "payout_group" }
 
 type PayoutGroup_Create_Fields struct {
 	FinalTxHash PayoutGroup_FinalTxHash_Field
+	Status      PayoutGroup_Status_Field
 }
 
 type PayoutGroup_Update_Fields struct {
 	FinalTxHash PayoutGroup_FinalTxHash_Field
+	Status      PayoutGroup_Status_Field
 }
 
 type PayoutGroup_Pk_Field struct {
@@ -686,6 +727,38 @@ func (f PayoutGroup_FinalTxHash_Field) value() interface{} {
 
 func (PayoutGroup_FinalTxHash_Field) _Column() string { return "final_tx_hash" }
 
+type PayoutGroup_Status_Field struct {
+	_set   bool
+	_null  bool
+	_value *string
+}
+
+func PayoutGroup_Status(v string) PayoutGroup_Status_Field {
+	return PayoutGroup_Status_Field{_set: true, _value: &v}
+}
+
+func PayoutGroup_Status_Raw(v *string) PayoutGroup_Status_Field {
+	if v == nil {
+		return PayoutGroup_Status_Null()
+	}
+	return PayoutGroup_Status(*v)
+}
+
+func PayoutGroup_Status_Null() PayoutGroup_Status_Field {
+	return PayoutGroup_Status_Field{_set: true, _null: true}
+}
+
+func (f PayoutGroup_Status_Field) isnull() bool { return !f._set || f._null || f._value == nil }
+
+func (f PayoutGroup_Status_Field) value() interface{} {
+	if !f._set || f._null {
+		return nil
+	}
+	return f._value
+}
+
+func (PayoutGroup_Status_Field) _Column() string { return "status" }
+
 type Payout struct {
 	Pk            int64
 	CreatedAt     time.Time
@@ -693,6 +766,7 @@ type Payout struct {
 	Payee         string
 	Usd           string
 	PayoutGroupId int64
+	Mandatory     bool
 }
 
 func (Payout) _Table() string { return "payout" }
@@ -814,6 +888,25 @@ func (f Payout_PayoutGroupId_Field) value() interface{} {
 }
 
 func (Payout_PayoutGroupId_Field) _Column() string { return "payout_group_id" }
+
+type Payout_Mandatory_Field struct {
+	_set   bool
+	_null  bool
+	_value bool
+}
+
+func Payout_Mandatory(v bool) Payout_Mandatory_Field {
+	return Payout_Mandatory_Field{_set: true, _value: v}
+}
+
+func (f Payout_Mandatory_Field) value() interface{} {
+	if !f._set || f._null {
+		return nil
+	}
+	return f._value
+}
+
+func (Payout_Mandatory_Field) _Column() string { return "mandatory" }
 
 type Transaction struct {
 	Pk                int64
@@ -1552,7 +1645,8 @@ func (obj *sqlite3Impl) CreateNoReturn_Payout(ctx context.Context,
 	payout_csv_line Payout_CsvLine_Field,
 	payout_payee Payout_Payee_Field,
 	payout_usd Payout_Usd_Field,
-	payout_payout_group_id Payout_PayoutGroupId_Field) (
+	payout_payout_group_id Payout_PayoutGroupId_Field,
+	payout_mandatory Payout_Mandatory_Field) (
 	err error) {
 
 	__now := obj.db.Hooks.Now().UTC()
@@ -1561,11 +1655,12 @@ func (obj *sqlite3Impl) CreateNoReturn_Payout(ctx context.Context,
 	__payee_val := payout_payee.value()
 	__usd_val := payout_usd.value()
 	__payout_group_id_val := payout_payout_group_id.value()
+	__mandatory_val := payout_mandatory.value()
 
-	var __embed_stmt = __sqlbundle_Literal("INSERT INTO payout ( created_at, csv_line, payee, usd, payout_group_id ) VALUES ( ?, ?, ?, ?, ? )")
+	var __embed_stmt = __sqlbundle_Literal("INSERT INTO payout ( created_at, csv_line, payee, usd, payout_group_id, mandatory ) VALUES ( ?, ?, ?, ?, ?, ? )")
 
 	var __values []interface{}
-	__values = append(__values, __created_at_val, __csv_line_val, __payee_val, __usd_val, __payout_group_id_val)
+	__values = append(__values, __created_at_val, __csv_line_val, __payee_val, __usd_val, __payout_group_id_val, __mandatory_val)
 
 	var __stmt = __sqlbundle_Render(obj.dialect, __embed_stmt)
 	obj.logStmt(__stmt, __values...)
@@ -1588,11 +1683,12 @@ func (obj *sqlite3Impl) CreateNoReturn_PayoutGroup(ctx context.Context,
 	__updated_at_val := __now.UTC()
 	__id_val := payout_group_id.value()
 	__final_tx_hash_val := optional.FinalTxHash.value()
+	__status_val := optional.Status.value()
 
-	var __embed_stmt = __sqlbundle_Literal("INSERT INTO payout_group ( created_at, updated_at, id, final_tx_hash ) VALUES ( ?, ?, ?, ? )")
+	var __embed_stmt = __sqlbundle_Literal("INSERT INTO payout_group ( created_at, updated_at, id, final_tx_hash, status ) VALUES ( ?, ?, ?, ?, ? )")
 
 	var __values []interface{}
-	__values = append(__values, __created_at_val, __updated_at_val, __id_val, __final_tx_hash_val)
+	__values = append(__values, __created_at_val, __updated_at_val, __id_val, __final_tx_hash_val, __status_val)
 
 	var __stmt = __sqlbundle_Render(obj.dialect, __embed_stmt)
 	obj.logStmt(__stmt, __values...)
@@ -1667,11 +1763,12 @@ func (obj *sqlite3Impl) CreateNoReturn_Metadata(ctx context.Context,
 	__attempts_val := metadata_attempts.value()
 	__spender_val := optional.Spender.value()
 	__owner_val := optional.Owner.value()
+	__bonus_multiplier_val := optional.BonusMultiplier.value()
 
-	var __embed_stmt = __sqlbundle_Literal("INSERT INTO metadata ( created_at, updated_at, version, attempts, spender, owner ) VALUES ( ?, ?, ?, ?, ?, ? )")
+	var __embed_stmt = __sqlbundle_Literal("INSERT INTO metadata ( created_at, updated_at, version, attempts, spender, owner, bonus_multiplier ) VALUES ( ?, ?, ?, ?, ?, ?, ? )")
 
 	var __values []interface{}
-	__values = append(__values, __created_at_val, __updated_at_val, __version_val, __attempts_val, __spender_val, __owner_val)
+	__values = append(__values, __created_at_val, __updated_at_val, __version_val, __attempts_val, __spender_val, __owner_val, __bonus_multiplier_val)
 
 	var __stmt = __sqlbundle_Render(obj.dialect, __embed_stmt)
 	obj.logStmt(__stmt, __values...)
@@ -1688,7 +1785,7 @@ func (obj *sqlite3Impl) All_Payout_By_PayoutGroupId(ctx context.Context,
 	payout_payout_group_id Payout_PayoutGroupId_Field) (
 	rows []*Payout, err error) {
 
-	var __embed_stmt = __sqlbundle_Literal("SELECT payout.pk, payout.created_at, payout.csv_line, payout.payee, payout.usd, payout.payout_group_id FROM payout WHERE payout.payout_group_id = ?")
+	var __embed_stmt = __sqlbundle_Literal("SELECT payout.pk, payout.created_at, payout.csv_line, payout.payee, payout.usd, payout.payout_group_id, payout.mandatory FROM payout WHERE payout.payout_group_id = ?")
 
 	var __values []interface{}
 	__values = append(__values, payout_payout_group_id.value())
@@ -1704,7 +1801,7 @@ func (obj *sqlite3Impl) All_Payout_By_PayoutGroupId(ctx context.Context,
 
 	for __rows.Next() {
 		payout := &Payout{}
-		err = __rows.Scan(&payout.Pk, &payout.CreatedAt, &payout.CsvLine, &payout.Payee, &payout.Usd, &payout.PayoutGroupId)
+		err = __rows.Scan(&payout.Pk, &payout.CreatedAt, &payout.CsvLine, &payout.Payee, &payout.Usd, &payout.PayoutGroupId, &payout.Mandatory)
 		if err != nil {
 			return nil, obj.makeErr(err)
 		}
@@ -1775,7 +1872,7 @@ func (obj *sqlite3Impl) Get_PayoutGroup_By_Pk(ctx context.Context,
 	payout_group_pk PayoutGroup_Pk_Field) (
 	payout_group *PayoutGroup, err error) {
 
-	var __embed_stmt = __sqlbundle_Literal("SELECT payout_group.pk, payout_group.created_at, payout_group.updated_at, payout_group.id, payout_group.final_tx_hash FROM payout_group WHERE payout_group.pk = ?")
+	var __embed_stmt = __sqlbundle_Literal("SELECT payout_group.pk, payout_group.created_at, payout_group.updated_at, payout_group.id, payout_group.final_tx_hash, payout_group.status FROM payout_group WHERE payout_group.pk = ?")
 
 	var __values []interface{}
 	__values = append(__values, payout_group_pk.value())
@@ -1784,7 +1881,7 @@ func (obj *sqlite3Impl) Get_PayoutGroup_By_Pk(ctx context.Context,
 	obj.logStmt(__stmt, __values...)
 
 	payout_group = &PayoutGroup{}
-	err = obj.driver.QueryRowContext(ctx, __stmt, __values...).Scan(&payout_group.Pk, &payout_group.CreatedAt, &payout_group.UpdatedAt, &payout_group.Id, &payout_group.FinalTxHash)
+	err = obj.driver.QueryRowContext(ctx, __stmt, __values...).Scan(&payout_group.Pk, &payout_group.CreatedAt, &payout_group.UpdatedAt, &payout_group.Id, &payout_group.FinalTxHash, &payout_group.Status)
 	if err != nil {
 		return (*PayoutGroup)(nil), obj.makeErr(err)
 	}
@@ -1795,7 +1892,7 @@ func (obj *sqlite3Impl) Get_PayoutGroup_By_Pk(ctx context.Context,
 func (obj *sqlite3Impl) All_Payout(ctx context.Context) (
 	rows []*Payout, err error) {
 
-	var __embed_stmt = __sqlbundle_Literal("SELECT payout.pk, payout.created_at, payout.csv_line, payout.payee, payout.usd, payout.payout_group_id FROM payout")
+	var __embed_stmt = __sqlbundle_Literal("SELECT payout.pk, payout.created_at, payout.csv_line, payout.payee, payout.usd, payout.payout_group_id, payout.mandatory FROM payout")
 
 	var __values []interface{}
 
@@ -1810,7 +1907,7 @@ func (obj *sqlite3Impl) All_Payout(ctx context.Context) (
 
 	for __rows.Next() {
 		payout := &Payout{}
-		err = __rows.Scan(&payout.Pk, &payout.CreatedAt, &payout.CsvLine, &payout.Payee, &payout.Usd, &payout.PayoutGroupId)
+		err = __rows.Scan(&payout.Pk, &payout.CreatedAt, &payout.CsvLine, &payout.Payee, &payout.Usd, &payout.PayoutGroupId, &payout.Mandatory)
 		if err != nil {
 			return nil, obj.makeErr(err)
 		}
@@ -1823,12 +1920,19 @@ func (obj *sqlite3Impl) All_Payout(ctx context.Context) (
 
 }
 
-func (obj *sqlite3Impl) All_Payout_By_PayoutGroup_FinalTxHash_Is_Null(ctx context.Context) (
+func (obj *sqlite3Impl) All_Payout_By_PayoutGroup_Status(ctx context.Context,
+	payout_group_status PayoutGroup_Status_Field) (
 	rows []*Payout, err error) {
 
-	var __embed_stmt = __sqlbundle_Literal("SELECT payout.pk, payout.created_at, payout.csv_line, payout.payee, payout.usd, payout.payout_group_id FROM payout  JOIN payout_group ON payout.payout_group_id = payout_group.id WHERE payout_group.final_tx_hash is NULL")
+	var __cond_0 = &__sqlbundle_Condition{Left: "payout_group.status", Equal: true, Right: "?", Null: true}
+
+	var __embed_stmt = __sqlbundle_Literals{Join: "", SQLs: []__sqlbundle_SQL{__sqlbundle_Literal("SELECT payout.pk, payout.created_at, payout.csv_line, payout.payee, payout.usd, payout.payout_group_id, payout.mandatory FROM payout  JOIN payout_group ON payout.payout_group_id = payout_group.id WHERE "), __cond_0}}
 
 	var __values []interface{}
+	if !payout_group_status.isnull() {
+		__cond_0.Null = false
+		__values = append(__values, payout_group_status.value())
+	}
 
 	var __stmt = __sqlbundle_Render(obj.dialect, __embed_stmt)
 	obj.logStmt(__stmt, __values...)
@@ -1841,7 +1945,7 @@ func (obj *sqlite3Impl) All_Payout_By_PayoutGroup_FinalTxHash_Is_Null(ctx contex
 
 	for __rows.Next() {
 		payout := &Payout{}
-		err = __rows.Scan(&payout.Pk, &payout.CreatedAt, &payout.CsvLine, &payout.Payee, &payout.Usd, &payout.PayoutGroupId)
+		err = __rows.Scan(&payout.Pk, &payout.CreatedAt, &payout.CsvLine, &payout.Payee, &payout.Usd, &payout.PayoutGroupId, &payout.Mandatory)
 		if err != nil {
 			return nil, obj.makeErr(err)
 		}
@@ -1879,6 +1983,32 @@ func (obj *sqlite3Impl) Count_PayoutGroup_By_FinalTxHash_Is_Null(ctx context.Con
 	var __embed_stmt = __sqlbundle_Literal("SELECT COUNT(*) FROM payout_group WHERE payout_group.final_tx_hash is NULL")
 
 	var __values []interface{}
+
+	var __stmt = __sqlbundle_Render(obj.dialect, __embed_stmt)
+	obj.logStmt(__stmt, __values...)
+
+	err = obj.driver.QueryRowContext(ctx, __stmt, __values...).Scan(&count)
+	if err != nil {
+		return 0, obj.makeErr(err)
+	}
+
+	return count, nil
+
+}
+
+func (obj *sqlite3Impl) Count_PayoutGroup_By_Status(ctx context.Context,
+	payout_group_status PayoutGroup_Status_Field) (
+	count int64, err error) {
+
+	var __cond_0 = &__sqlbundle_Condition{Left: "payout_group.status", Equal: true, Right: "?", Null: true}
+
+	var __embed_stmt = __sqlbundle_Literals{Join: "", SQLs: []__sqlbundle_SQL{__sqlbundle_Literal("SELECT COUNT(*) FROM payout_group WHERE "), __cond_0}}
+
+	var __values []interface{}
+	if !payout_group_status.isnull() {
+		__cond_0.Null = false
+		__values = append(__values, payout_group_status.value())
+	}
 
 	var __stmt = __sqlbundle_Render(obj.dialect, __embed_stmt)
 	obj.logStmt(__stmt, __values...)
@@ -2000,7 +2130,7 @@ func (obj *sqlite3Impl) Find_PayoutGroup_By_Id(ctx context.Context,
 	payout_group_id PayoutGroup_Id_Field) (
 	payout_group *PayoutGroup, err error) {
 
-	var __embed_stmt = __sqlbundle_Literal("SELECT payout_group.pk, payout_group.created_at, payout_group.updated_at, payout_group.id, payout_group.final_tx_hash FROM payout_group WHERE payout_group.id = ?")
+	var __embed_stmt = __sqlbundle_Literal("SELECT payout_group.pk, payout_group.created_at, payout_group.updated_at, payout_group.id, payout_group.final_tx_hash, payout_group.status FROM payout_group WHERE payout_group.id = ?")
 
 	var __values []interface{}
 	__values = append(__values, payout_group_id.value())
@@ -2009,7 +2139,7 @@ func (obj *sqlite3Impl) Find_PayoutGroup_By_Id(ctx context.Context,
 	obj.logStmt(__stmt, __values...)
 
 	payout_group = &PayoutGroup{}
-	err = obj.driver.QueryRowContext(ctx, __stmt, __values...).Scan(&payout_group.Pk, &payout_group.CreatedAt, &payout_group.UpdatedAt, &payout_group.Id, &payout_group.FinalTxHash)
+	err = obj.driver.QueryRowContext(ctx, __stmt, __values...).Scan(&payout_group.Pk, &payout_group.CreatedAt, &payout_group.UpdatedAt, &payout_group.Id, &payout_group.FinalTxHash, &payout_group.Status)
 	if err == sql.ErrNoRows {
 		return (*PayoutGroup)(nil), nil
 	}
@@ -2044,10 +2174,34 @@ func (obj *sqlite3Impl) Find_Transaction_By_Hash(ctx context.Context,
 
 }
 
+func (obj *sqlite3Impl) Find_Metadata_By_Pk(ctx context.Context,
+	metadata_pk Metadata_Pk_Field) (
+	metadata *Metadata, err error) {
+
+	var __embed_stmt = __sqlbundle_Literal("SELECT metadata.pk, metadata.created_at, metadata.updated_at, metadata.version, metadata.attempts, metadata.spender, metadata.owner, metadata.bonus_multiplier FROM metadata WHERE metadata.pk = ?")
+
+	var __values []interface{}
+	__values = append(__values, metadata_pk.value())
+
+	var __stmt = __sqlbundle_Render(obj.dialect, __embed_stmt)
+	obj.logStmt(__stmt, __values...)
+
+	metadata = &Metadata{}
+	err = obj.driver.QueryRowContext(ctx, __stmt, __values...).Scan(&metadata.Pk, &metadata.CreatedAt, &metadata.UpdatedAt, &metadata.Version, &metadata.Attempts, &metadata.Spender, &metadata.Owner, &metadata.BonusMultiplier)
+	if err == sql.ErrNoRows {
+		return (*Metadata)(nil), nil
+	}
+	if err != nil {
+		return (*Metadata)(nil), obj.makeErr(err)
+	}
+	return metadata, nil
+
+}
+
 func (obj *sqlite3Impl) First_Metadata(ctx context.Context) (
 	metadata *Metadata, err error) {
 
-	var __embed_stmt = __sqlbundle_Literal("SELECT metadata.pk, metadata.created_at, metadata.updated_at, metadata.version, metadata.attempts, metadata.spender, metadata.owner FROM metadata LIMIT 1 OFFSET 0")
+	var __embed_stmt = __sqlbundle_Literal("SELECT metadata.pk, metadata.created_at, metadata.updated_at, metadata.version, metadata.attempts, metadata.spender, metadata.owner, metadata.bonus_multiplier FROM metadata LIMIT 1 OFFSET 0")
 
 	var __values []interface{}
 
@@ -2068,7 +2222,7 @@ func (obj *sqlite3Impl) First_Metadata(ctx context.Context) (
 	}
 
 	metadata = &Metadata{}
-	err = __rows.Scan(&metadata.Pk, &metadata.CreatedAt, &metadata.UpdatedAt, &metadata.Version, &metadata.Attempts, &metadata.Spender, &metadata.Owner)
+	err = __rows.Scan(&metadata.Pk, &metadata.CreatedAt, &metadata.UpdatedAt, &metadata.Version, &metadata.Attempts, &metadata.Spender, &metadata.Owner, &metadata.BonusMultiplier)
 	if err != nil {
 		return nil, obj.makeErr(err)
 	}
@@ -2125,6 +2279,11 @@ func (obj *sqlite3Impl) UpdateNoReturn_PayoutGroup_By_Id(ctx context.Context,
 	if update.FinalTxHash._set {
 		__values = append(__values, update.FinalTxHash.value())
 		__sets_sql.SQLs = append(__sets_sql.SQLs, __sqlbundle_Literal("final_tx_hash = ?"))
+	}
+
+	if update.Status._set {
+		__values = append(__values, update.Status.value())
+		__sets_sql.SQLs = append(__sets_sql.SQLs, __sqlbundle_Literal("status = ?"))
 	}
 
 	__now := obj.db.Hooks.Now().UTC()
@@ -2216,6 +2375,11 @@ func (obj *sqlite3Impl) UpdateNoReturn_Metadata_By_Pk(ctx context.Context,
 		__sets_sql.SQLs = append(__sets_sql.SQLs, __sqlbundle_Literal("owner = ?"))
 	}
 
+	if update.BonusMultiplier._set {
+		__values = append(__values, update.BonusMultiplier.value())
+		__sets_sql.SQLs = append(__sets_sql.SQLs, __sqlbundle_Literal("bonus_multiplier = ?"))
+	}
+
 	__now := obj.db.Hooks.Now().UTC()
 
 	__values = append(__values, __now.UTC())
@@ -2240,13 +2404,13 @@ func (obj *sqlite3Impl) getLastPayout(ctx context.Context,
 	pk int64) (
 	payout *Payout, err error) {
 
-	var __embed_stmt = __sqlbundle_Literal("SELECT payout.pk, payout.created_at, payout.csv_line, payout.payee, payout.usd, payout.payout_group_id FROM payout WHERE _rowid_ = ?")
+	var __embed_stmt = __sqlbundle_Literal("SELECT payout.pk, payout.created_at, payout.csv_line, payout.payee, payout.usd, payout.payout_group_id, payout.mandatory FROM payout WHERE _rowid_ = ?")
 
 	var __stmt = __sqlbundle_Render(obj.dialect, __embed_stmt)
 	obj.logStmt(__stmt, pk)
 
 	payout = &Payout{}
-	err = obj.driver.QueryRowContext(ctx, __stmt, pk).Scan(&payout.Pk, &payout.CreatedAt, &payout.CsvLine, &payout.Payee, &payout.Usd, &payout.PayoutGroupId)
+	err = obj.driver.QueryRowContext(ctx, __stmt, pk).Scan(&payout.Pk, &payout.CreatedAt, &payout.CsvLine, &payout.Payee, &payout.Usd, &payout.PayoutGroupId, &payout.Mandatory)
 	if err != nil {
 		return (*Payout)(nil), obj.makeErr(err)
 	}
@@ -2258,13 +2422,13 @@ func (obj *sqlite3Impl) getLastPayoutGroup(ctx context.Context,
 	pk int64) (
 	payout_group *PayoutGroup, err error) {
 
-	var __embed_stmt = __sqlbundle_Literal("SELECT payout_group.pk, payout_group.created_at, payout_group.updated_at, payout_group.id, payout_group.final_tx_hash FROM payout_group WHERE _rowid_ = ?")
+	var __embed_stmt = __sqlbundle_Literal("SELECT payout_group.pk, payout_group.created_at, payout_group.updated_at, payout_group.id, payout_group.final_tx_hash, payout_group.status FROM payout_group WHERE _rowid_ = ?")
 
 	var __stmt = __sqlbundle_Render(obj.dialect, __embed_stmt)
 	obj.logStmt(__stmt, pk)
 
 	payout_group = &PayoutGroup{}
-	err = obj.driver.QueryRowContext(ctx, __stmt, pk).Scan(&payout_group.Pk, &payout_group.CreatedAt, &payout_group.UpdatedAt, &payout_group.Id, &payout_group.FinalTxHash)
+	err = obj.driver.QueryRowContext(ctx, __stmt, pk).Scan(&payout_group.Pk, &payout_group.CreatedAt, &payout_group.UpdatedAt, &payout_group.Id, &payout_group.FinalTxHash, &payout_group.Status)
 	if err != nil {
 		return (*PayoutGroup)(nil), obj.makeErr(err)
 	}
@@ -2294,13 +2458,13 @@ func (obj *sqlite3Impl) getLastMetadata(ctx context.Context,
 	pk int64) (
 	metadata *Metadata, err error) {
 
-	var __embed_stmt = __sqlbundle_Literal("SELECT metadata.pk, metadata.created_at, metadata.updated_at, metadata.version, metadata.attempts, metadata.spender, metadata.owner FROM metadata WHERE _rowid_ = ?")
+	var __embed_stmt = __sqlbundle_Literal("SELECT metadata.pk, metadata.created_at, metadata.updated_at, metadata.version, metadata.attempts, metadata.spender, metadata.owner, metadata.bonus_multiplier FROM metadata WHERE _rowid_ = ?")
 
 	var __stmt = __sqlbundle_Render(obj.dialect, __embed_stmt)
 	obj.logStmt(__stmt, pk)
 
 	metadata = &Metadata{}
-	err = obj.driver.QueryRowContext(ctx, __stmt, pk).Scan(&metadata.Pk, &metadata.CreatedAt, &metadata.UpdatedAt, &metadata.Version, &metadata.Attempts, &metadata.Spender, &metadata.Owner)
+	err = obj.driver.QueryRowContext(ctx, __stmt, pk).Scan(&metadata.Pk, &metadata.CreatedAt, &metadata.UpdatedAt, &metadata.Version, &metadata.Attempts, &metadata.Spender, &metadata.Owner, &metadata.BonusMultiplier)
 	if err != nil {
 		return (*Metadata)(nil), obj.makeErr(err)
 	}
@@ -2432,13 +2596,14 @@ func (rx *Rx) All_Payout_By_PayoutGroupId(ctx context.Context,
 	return tx.All_Payout_By_PayoutGroupId(ctx, payout_payout_group_id)
 }
 
-func (rx *Rx) All_Payout_By_PayoutGroup_FinalTxHash_Is_Null(ctx context.Context) (
+func (rx *Rx) All_Payout_By_PayoutGroup_Status(ctx context.Context,
+	payout_group_status PayoutGroup_Status_Field) (
 	rows []*Payout, err error) {
 	var tx *Tx
 	if tx, err = rx.getTx(ctx); err != nil {
 		return
 	}
-	return tx.All_Payout_By_PayoutGroup_FinalTxHash_Is_Null(ctx)
+	return tx.All_Payout_By_PayoutGroup_Status(ctx, payout_group_status)
 }
 
 func (rx *Rx) All_Transaction(ctx context.Context) (
@@ -2488,6 +2653,16 @@ func (rx *Rx) Count_PayoutGroup_By_FinalTxHash_Is_Null(ctx context.Context) (
 	return tx.Count_PayoutGroup_By_FinalTxHash_Is_Null(ctx)
 }
 
+func (rx *Rx) Count_PayoutGroup_By_Status(ctx context.Context,
+	payout_group_status PayoutGroup_Status_Field) (
+	count int64, err error) {
+	var tx *Tx
+	if tx, err = rx.getTx(ctx); err != nil {
+		return
+	}
+	return tx.Count_PayoutGroup_By_Status(ctx, payout_group_status)
+}
+
 func (rx *Rx) Count_Payout_By_PayoutGroupId(ctx context.Context,
 	payout_payout_group_id Payout_PayoutGroupId_Field) (
 	count int64, err error) {
@@ -2534,13 +2709,14 @@ func (rx *Rx) CreateNoReturn_Payout(ctx context.Context,
 	payout_csv_line Payout_CsvLine_Field,
 	payout_payee Payout_Payee_Field,
 	payout_usd Payout_Usd_Field,
-	payout_payout_group_id Payout_PayoutGroupId_Field) (
+	payout_payout_group_id Payout_PayoutGroupId_Field,
+	payout_mandatory Payout_Mandatory_Field) (
 	err error) {
 	var tx *Tx
 	if tx, err = rx.getTx(ctx); err != nil {
 		return
 	}
-	return tx.CreateNoReturn_Payout(ctx, payout_csv_line, payout_payee, payout_usd, payout_payout_group_id)
+	return tx.CreateNoReturn_Payout(ctx, payout_csv_line, payout_payee, payout_usd, payout_payout_group_id, payout_mandatory)
 
 }
 
@@ -2575,6 +2751,16 @@ func (rx *Rx) Create_Transaction(ctx context.Context,
 	}
 	return tx.Create_Transaction(ctx, transaction_hash, transaction_owner, transaction_spender, transaction_nonce, transaction_estimated_gas_price, transaction_storj_price, transaction_storj_tokens, transaction_payout_group_id, transaction_raw, transaction_state, optional)
 
+}
+
+func (rx *Rx) Find_Metadata_By_Pk(ctx context.Context,
+	metadata_pk Metadata_Pk_Field) (
+	metadata *Metadata, err error) {
+	var tx *Tx
+	if tx, err = rx.getTx(ctx); err != nil {
+		return
+	}
+	return tx.Find_Metadata_By_Pk(ctx, metadata_pk)
 }
 
 func (rx *Rx) Find_PayoutGroup_By_Id(ctx context.Context,
@@ -2666,7 +2852,8 @@ type Methods interface {
 		payout_payout_group_id Payout_PayoutGroupId_Field) (
 		rows []*Payout, err error)
 
-	All_Payout_By_PayoutGroup_FinalTxHash_Is_Null(ctx context.Context) (
+	All_Payout_By_PayoutGroup_Status(ctx context.Context,
+		payout_group_status PayoutGroup_Status_Field) (
 		rows []*Payout, err error)
 
 	All_Transaction(ctx context.Context) (
@@ -2684,6 +2871,10 @@ type Methods interface {
 		count int64, err error)
 
 	Count_PayoutGroup_By_FinalTxHash_Is_Null(ctx context.Context) (
+		count int64, err error)
+
+	Count_PayoutGroup_By_Status(ctx context.Context,
+		payout_group_status PayoutGroup_Status_Field) (
 		count int64, err error)
 
 	Count_Payout_By_PayoutGroupId(ctx context.Context,
@@ -2707,7 +2898,8 @@ type Methods interface {
 		payout_csv_line Payout_CsvLine_Field,
 		payout_payee Payout_Payee_Field,
 		payout_usd Payout_Usd_Field,
-		payout_payout_group_id Payout_PayoutGroupId_Field) (
+		payout_payout_group_id Payout_PayoutGroupId_Field,
+		payout_mandatory Payout_Mandatory_Field) (
 		err error)
 
 	CreateNoReturn_PayoutGroup(ctx context.Context,
@@ -2728,6 +2920,10 @@ type Methods interface {
 		transaction_state Transaction_State_Field,
 		optional Transaction_Create_Fields) (
 		transaction *Transaction, err error)
+
+	Find_Metadata_By_Pk(ctx context.Context,
+		metadata_pk Metadata_Pk_Field) (
+		metadata *Metadata, err error)
 
 	Find_PayoutGroup_By_Id(ctx context.Context,
 		payout_group_id PayoutGroup_Id_Field) (

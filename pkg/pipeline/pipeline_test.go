@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 
 	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
 	"storj.io/crypto-batch-payment/pkg/payer"
@@ -157,14 +158,11 @@ func createTestDB(ctx context.Context, t *testing.T, payouts []*pipelinedb.Payou
 
 }
 func createTestPipeline(ctx context.Context, t *testing.T, db *pipelinedb.DB) (*Pipeline, *TestPayer) {
-	logger, err := zap.NewDevelopment()
-	require.NoError(t, err)
-
 	cfg := Config{
 		DB:  db,
-		Log: logger,
+		Log: zaptest.NewLogger(t),
 		Quoter: &StaticQuoter{
-			value: decimal.New(2, 0),
+			value: decimal.NewFromInt(2),
 		},
 	}
 
@@ -197,33 +195,51 @@ func (t *TestPayer) String() string {
 	return "test"
 }
 
+func (t *TestPayer) ChainID() int {
+	return testChainID
+}
+
+func (t *TestPayer) Decimals() int32 {
+	return 8
+}
+
 func (t *TestPayer) NextNonce(ctx context.Context) (uint64, error) {
 	ret := t.nextNonce
 	t.nextNonce++
 	return ret, nil
 }
 
-func (t *TestPayer) CheckPreconditions(ctx context.Context) ([]string, error) {
-	return nil, nil
+func (t *TestPayer) GetETHBalance(ctx context.Context) (*big.Int, error) {
+	balance, _ := new(big.Int).SetString("10_000_000_000_000_000_000", 0) // 10 ETH
+	return balance, nil
 }
 
 func (t *TestPayer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
 	return big.NewInt(10_000_00000000), nil
 }
 
-func (t *TestPayer) GetTokenDecimals(ctx context.Context) (int32, error) {
-	return 8, nil
+func (t *TestPayer) GetGasInfo(ctx context.Context) (payer.GasInfo, error) {
+	return payer.GasInfo{
+		GasLimit:  50000,
+		GasFeeCap: big.NewInt(1_000_000_000), // 1.000 gwei
+		GasTipCap: big.NewInt(1_000_000),     // 0.001 gwei
+	}, nil
 }
 
-func (t *TestPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payouts []*pipelinedb.Payout, nonce uint64, storjPrice decimal.Decimal) (tx payer.Transaction, from common.Address, err error) {
+func (t *TestPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, params payer.TransactionParams) (_ payer.Transaction, _ common.Address, err error) {
+	gasInfo, err := t.GetGasInfo(ctx)
+	if err != nil {
+		return payer.Transaction{}, common.Address{}, err
+	}
 	hash := make([]byte, 32)
 	_, err = rand.Read(hash)
 	return payer.Transaction{
-		Hash:  common.BytesToHash(hash).String(),
-		Nonce: nonce,
-		Raw:   make(map[string]string),
+		Hash:      common.BytesToHash(hash).String(),
+		Nonce:     params.Nonce,
+		GasLimit:  gasInfo.GasLimit,
+		GasFeeCap: gasInfo.GasFeeCap,
+		Raw:       make(map[string]string),
 	}, common.HexToAddress("0x94F31A2f6522dbf0594bf9c37F124fB6EAC4d9cd"), err
-
 }
 
 func (t *TestPayer) SendTransaction(ctx context.Context, log *zap.Logger, tx payer.Transaction) error {
@@ -247,6 +263,14 @@ func (s StaticQuoter) GetQuote(ctx context.Context, symbol coinmarketcap.Symbol)
 		Price:       s.value,
 		LastUpdated: time.Now(),
 	}, nil
+}
+
+type StaticFeeEstimator struct {
+	value decimal.Decimal
+}
+
+func (s StaticFeeEstimator) GetEstimatedGasFee(ctx context.Context) (decimal.Decimal, error) {
+	return s.value, nil
 }
 
 func statusResult(status pipelinedb.TxState, hash string) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {

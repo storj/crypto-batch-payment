@@ -7,10 +7,10 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/shopspring/decimal"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
 
+	"storj.io/crypto-batch-payment/pkg/contract"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 )
 
@@ -43,23 +43,41 @@ func (s *SimPayer) String() string {
 	return Sim.String()
 }
 
+func (s *SimPayer) ChainID() int {
+	return 1337
+}
+
+func (s *SimPayer) Decimals() int32 {
+	return 8
+}
+
 func (s *SimPayer) NextNonce(ctx context.Context) (uint64, error) {
 	return uint64(0), nil
 }
 
-func (s *SimPayer) CheckPreconditions(ctx context.Context) ([]string, error) {
-	return nil, nil
+func (s *SimPayer) GetGasInfo(context.Context) (GasInfo, error) {
+	return GasInfo{
+		GasLimit:  contract.TokenTransferGasLimit,
+		GasFeeCap: big.NewInt(1_000_000_000), // 1 gwei
+		GasTipCap: big.NewInt(1_000_000),     // .001 gwei
+	}, nil
+}
+
+func (s *SimPayer) GetETHBalance(ctx context.Context) (*big.Int, error) {
+	balance, _ := new(big.Int).SetString("1000000000000000000", 0)
+	return balance, nil
 }
 
 func (s *SimPayer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
 	return big.NewInt(1000000000000), nil
 }
 
-func (s *SimPayer) GetTokenDecimals(ctx context.Context) (int32, error) {
-	return 8, nil
-}
+func (s *SimPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, params TransactionParams) (tx Transaction, from common.Address, err error) {
+	gasInfo, err := s.GetGasInfo(ctx)
+	if err != nil {
+		return Transaction{}, common.Address{}, err
+	}
 
-func (s *SimPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payouts []*pipelinedb.Payout, nonce uint64, storjPrice decimal.Decimal) (tx Transaction, from common.Address, err error) {
 	hash := make([]byte, 32)
 	_, err = rand.Read(hash)
 	if err != nil {
@@ -67,8 +85,10 @@ func (s *SimPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, pa
 	}
 	txHash := common.BytesToHash(hash).String()
 	return Transaction{
-		Hash:  txHash,
-		Nonce: nonce,
+		Hash:      txHash,
+		Nonce:     params.Nonce,
+		GasLimit:  gasInfo.GasLimit,
+		GasFeeCap: gasInfo.GasFeeCap,
 		Raw: map[string]interface{}{
 			"hash": txHash,
 		},
@@ -102,13 +122,13 @@ func (s *SimPayer) CheckConfirmedTransactionState(ctx context.Context, hash stri
 	return pipelinedb.TxConfirmed, nil
 }
 
-type SimAuditor struct {
-}
+type SimAuditor struct{}
 
 // NewSimAuditor creates a simulated auditor.
 func NewSimAuditor() SimAuditor {
 	return SimAuditor{}
 }
+
 func (s SimAuditor) CheckTransactionState(ctx context.Context, hash string) (pipelinedb.TxState, error) {
 	return pipelinedb.TxConfirmed, nil
 }

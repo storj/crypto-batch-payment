@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 
 	batchpayment "storj.io/crypto-batch-payment/pkg"
@@ -20,15 +19,13 @@ import (
 	"storj.io/crypto-batch-payment/pkg/contract"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
-	"storj.io/crypto-batch-payment/pkg/storjtoken"
 )
 
 type Payer struct {
 	client        Client
 	contract      *contract.Token
 	owner         common.Address
-	gasTipCap     *big.Int
-	maxGas        *big.Int
+	chainID       int
 	signer        bind.SignerFn
 	from          common.Address
 	tokenDecimals int32
@@ -54,26 +51,14 @@ func NewPayer(ctx context.Context,
 	contractAddress common.Address,
 	owner common.Address,
 	key *ecdsa.PrivateKey,
-	chainID *big.Int,
-	gasTipCap *big.Int,
-	maxGas *big.Int) (*Payer, error) {
+	chainID int) (*Payer, error) {
 
-	contract, err := contract.NewToken(contractAddress, &ignoreSend{
-		ContractBackend: client,
-	})
+	contract, err := contract.NewToken(contractAddress, client)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
 
-	if gasTipCap == nil {
-		suggestedGasTip, err := client.SuggestGasTipCap(ctx)
-		if err != nil {
-			return nil, errs.Wrap(err)
-		}
-		gasTipCap = suggestedGasTip
-	}
-
-	opts, err := bind.NewKeyedTransactorWithChainID(key, chainID)
+	opts, err := bind.NewKeyedTransactorWithChainID(key, big.NewInt(int64(chainID)))
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
@@ -85,8 +70,7 @@ func NewPayer(ctx context.Context,
 
 	return &Payer{
 		owner:         owner,
-		gasTipCap:     gasTipCap,
-		maxGas:        maxGas,
+		chainID:       chainID,
 		client:        client,
 		contract:      contract,
 		signer:        opts.Signer,
@@ -99,79 +83,103 @@ func (e *Payer) String() string {
 	return payer.Eth.String()
 }
 
+func (e *Payer) ChainID() int {
+	return e.chainID
+}
+
+func (e *Payer) Decimals() int32 {
+	return e.tokenDecimals
+}
+
 func (e *Payer) NextNonce(ctx context.Context) (uint64, error) {
 	return e.client.NonceAt(ctx, e.from, nil)
 }
 
-func (e *Payer) CheckPreconditions(ctx context.Context) (unmet []string, err error) {
-	lastBlock, err := e.client.BlockByNumber(ctx, nil)
-	if err != nil {
-		return nil, errs.Wrap(err)
-	}
-
-	// max gas should be higher than the base fee + tip
-	if e.maxGas.Cmp(new(big.Int).Add(lastBlock.BaseFee(), e.gasTipCap)) < 0 {
-		unmet = append(unmet, fmt.Sprintf(
-			"the base fee of the last block (%s) plus the tip (%s) is larger than the max allowed gas price (%s)",
-			lastBlock.BaseFee(), e.gasTipCap, e.maxGas))
-	}
-
-	return unmet, nil
-
+func (e *Payer) GetETHBalance(ctx context.Context) (*big.Int, error) {
+	balance, err := e.client.PendingBalanceAt(ctx, e.from)
+	return balance, errs.Wrap(err)
 }
 
 func (e *Payer) GetTokenBalance(ctx context.Context) (*big.Int, error) {
-	storjBalance, err := e.contract.BalanceOf(&bind.CallOpts{
+	balance, err := e.contract.BalanceOf(&bind.CallOpts{
 		Pending: false,
 		Context: ctx,
 	}, e.owner)
-	return storjBalance, errs.Wrap(err)
+	return balance, errs.Wrap(err)
 }
 
-func (e *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payouts []*pipelinedb.Payout,
-	nonce uint64, storjPrice decimal.Decimal) (_ payer.Transaction, _ common.Address, err error) {
-
-	var rawTx *types.Transaction
-	if len(payouts) > 1 {
-		return payer.Transaction{}, common.Address{}, errs.Errorf("multitransfer is not supported yet")
+func (e *Payer) GetGasInfo(ctx context.Context) (payer.GasInfo, error) {
+	gasLimit := uint64(contract.TokenTransferGasLimit)
+	if e.owner != e.from {
+		gasLimit = contract.TokenTransferFromGasLimit
 	}
-	payout := payouts[0]
+
+	// SuggestGasPrice returns a gasFeeCap suggestion on EIP-1557 aware networks.
+	gasFeeCap, err := e.client.SuggestGasPrice(ctx)
+	if err != nil {
+		return payer.GasInfo{}, errs.Wrap(err)
+	}
+
+	gasTipCap, err := e.client.SuggestGasTipCap(ctx)
+	if err != nil {
+		return payer.GasInfo{}, errs.Wrap(err)
+	}
+
+	return payer.GasInfo{
+		GasLimit:  gasLimit,
+		GasFeeCap: gasFeeCap,
+		GasTipCap: gasTipCap,
+	}, nil
+}
+
+func (e *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, params payer.TransactionParams) (_ payer.Transaction, _ common.Address, err error) {
+	gasInfo, err := e.GetGasInfo(ctx)
+	if err != nil {
+		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
+	}
 
 	opts := &bind.TransactOpts{
 		From:      e.from,
 		Signer:    e.signer,
+		GasLimit:  gasInfo.GasLimit,
+		GasFeeCap: gasInfo.GasFeeCap,
+		GasTipCap: gasInfo.GasTipCap,
 		Value:     zero,
-		Nonce:     new(big.Int).SetUint64(nonce),
-		GasTipCap: e.gasTipCap,
-		GasFeeCap: e.maxGas,
+		Nonce:     new(big.Int).SetUint64(params.Nonce),
 		Context:   ctx,
+		NoSend:    true,
 	}
 
-	storjTokens := storjtoken.FromUSD(payout.USD, storjPrice, e.tokenDecimals)
-	var storjAllowance *big.Int
+	var rawTx *types.Transaction
 	if e.owner == opts.From {
-		opts.GasLimit = contract.TokenTransferGasLimit
-		rawTx, err = e.contract.Transfer(opts, payout.Payee, storjTokens)
+		rawTx, err = e.contract.Transfer(opts, params.Payee, params.Tokens)
+		if err != nil {
+			return payer.Transaction{}, common.Address{}, errs.Wrap(err)
+		}
 	} else {
 		// Check the STORJ allowance to make sure there is enough. Since the
 		// contract does not support pending operations, the best we can do
 		// is check the live balance.
-		storjAllowance, err = e.contract.Allowance(&bind.CallOpts{
+		storjAllowance, err := e.contract.Allowance(&bind.CallOpts{
 			Pending: false,
 			Context: ctx,
 		}, e.owner, opts.From)
 		if err != nil {
 			return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 		}
-		if storjAllowance.Cmp(storjTokens) < 0 {
+		if storjAllowance.Cmp(params.Tokens) < 0 {
 			return payer.Transaction{}, common.Address{}, errs.Errorf("not enough STORJ allowance to cover transfer")
 		}
 
-		opts.GasLimit = contract.TokenTransferFromGasLimit
-		rawTx, err = e.contract.TransferFrom(opts, e.owner, payout.Payee, storjTokens)
-	}
-	if err != nil {
-		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
+		log = log.With(
+			zap.Stringer("spender", opts.From),
+			zap.Stringer("spender-storj-allowance", storjAllowance),
+		)
+
+		rawTx, err = e.contract.TransferFrom(opts, e.owner, params.Payee, params.Tokens)
+		if err != nil {
+			return payer.Transaction{}, common.Address{}, errs.Wrap(err)
+		}
 	}
 
 	// Grab the pending ETH balance for logging
@@ -180,25 +188,20 @@ func (e *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, payou
 		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
-	fields := []zap.Field{
-		zap.String("payee", payout.Payee.String()),
-		zap.String("usd", payout.USD.String()),
-		zap.String("pending-eth-balance", ethBalance.String()),
-		zap.String("hash", rawTx.Hash().String()),
-	}
-
-	if e.owner != e.from {
-		fields = append(fields,
-			zap.String("spender", opts.From.String()),
-			zap.String("spender-storj-allowance", storjAllowance.String()),
-		)
-	}
-	log.With(fields...).Info("Transaction is created")
+	log.Info("Transaction is created",
+		zap.Stringer("payee", params.Payee),
+		zap.Stringer("pending-eth-balance", ethBalance),
+		zap.Stringer("hash", rawTx.Hash()),
+		zap.Uint64("gas-limit", opts.GasLimit),
+		zap.Stringer("gas-fee-cap", opts.GasFeeCap),
+	)
 
 	return payer.Transaction{
-		Hash:  rawTx.Hash().Hex(),
-		Nonce: nonce,
-		Raw:   rawTx,
+		Hash:      rawTx.Hash().Hex(),
+		Nonce:     params.Nonce,
+		GasLimit:  opts.GasLimit,
+		GasFeeCap: opts.GasFeeCap,
+		Raw:       rawTx,
 	}, e.from, nil
 }
 
@@ -377,7 +380,6 @@ func (e *Payer) getTransactionStatus(ctx context.Context, hashString string) (*p
 }
 
 func (e *Payer) PrintEstimate(ctx context.Context, remaining int64) error {
-
 	// TODO: revisit with multitransfer by estimating payout group size, etc.
 	var gasPerTx *big.Int
 	if e.owner == e.from {
@@ -398,20 +400,5 @@ func (e *Payer) PrintEstimate(ctx context.Context, remaining int64) error {
 	fmt.Printf("Estimated Gas Remaining.....: %s\n", estimatedGasLeft)
 	fmt.Printf("Current base fee    ........: %s\n", batchpayment.PrettyETH(gasFee))
 	fmt.Printf("Remaining Gas Cost..........: %s\n", batchpayment.PrettyETH(estimatedGasCost))
-	return nil
-}
-
-func (e *Payer) GetTokenDecimals(ctx context.Context) (int32, error) {
-	return e.tokenDecimals, nil
-}
-
-// ignoreSend wraps a contract backend to not actually send the transaction.
-// It is used with the token contract to prepare and sign transactions but not
-// actually send them.
-type ignoreSend struct {
-	bind.ContractBackend
-}
-
-func (p *ignoreSend) SendTransaction(ctx context.Context, tx *types.Transaction) error {
 	return nil
 }

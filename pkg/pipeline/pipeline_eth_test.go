@@ -8,29 +8,27 @@ import (
 	"testing"
 	"time"
 
-	batchpayment "storj.io/crypto-batch-payment/pkg"
-
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
-
-	"storj.io/crypto-batch-payment/pkg/eth"
-	"storj.io/crypto-batch-payment/pkg/pipelinedb"
-
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 
+	batchpayment "storj.io/crypto-batch-payment/pkg"
 	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
 	"storj.io/crypto-batch-payment/pkg/contract"
+	"storj.io/crypto-batch-payment/pkg/eth"
 	"storj.io/crypto-batch-payment/pkg/ethtest"
+	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 )
 
 const (
-	initialStorj int64 = 1e11
+	initialStorj = 1e11
+	testChainID  = 1337
 )
 
 var (
@@ -515,7 +513,7 @@ func TestPipelineUsesLatestGasEstimateAndStorjPrice(t *testing.T) {
 }
 
 func TestPipelineTransferFrom(t *testing.T) {
-	gasTipCap := big.NewInt(1)
+	gasTipCap := eth.UnitFromInt(1, eth.GWEI)
 	test := NewPipelineTest(t, WithSpender(spender), WithGasTipCap(gasTipCap))
 
 	test.Approve(owner, spender, big.NewInt(1e8))
@@ -560,7 +558,6 @@ func TestPipelineTransferFrom(t *testing.T) {
 			test.commit()
 			return false, nil
 		case 2:
-
 			txHash, err := batchpayment.HashFromString(tx.Hash)
 			test.R.NoError(err)
 
@@ -580,8 +577,11 @@ func TestPipelineTransferFrom(t *testing.T) {
 			newBalance, err := client.BalanceAt(ctx, spender.Address, nil)
 			test.R.NoError(err)
 
+			t.Logf("block baseFee: %s", block.BaseFee())
+			t.Logf("block baseFee: %s", block.BaseFee())
+
 			// make sure only gas * (baseFee + tip) is used
-			gasCost := new(big.Int).Add(block.BaseFee(), gasTipCap)
+			gasCost := new(big.Int).Add(block.BaseFee(), gasTipCap.WEIInt())
 			cost := new(big.Int).Mul(gasCost, big.NewInt(int64(receipt.GasUsed)))
 			test.R.Equal(new(big.Int).Sub(lastBalance, cost), newBalance)
 
@@ -717,6 +717,102 @@ func TestPipelineTooSmallPayment(t *testing.T) {
 	test.AssertProcessPayoutsFails("cannot transfer 0 tokens for payout group 1: must be more than zero")
 }
 
+func TestPipelinePaymentBelowThreshold(t *testing.T) {
+	// The payout is for $1.00. With a threshold divisor of 4, the payout will
+	// be skipped if the transaction cost exceeds $0.25.
+	// Our fake transaction gas limit is 70000 gas. With a gas fee cap of 4
+	// GWEI (per gas), the most this transaction will cost is 280,000 GWEI
+	// (0.000280000 ETH). At $1000 ETH price, that comes to $0.28, which
+	// exceeds the limit and marks the payout as "skipped".
+	gasFeeCap := eth.RequireParseUnit("4.000gwei")
+	gasTipCap := eth.RequireParseUnit("0.001gwei")
+
+	test := NewPipelineTest(t,
+		WithGasFeeCap(gasFeeCap),
+		WithGasTipCap(gasTipCap),
+		WithThresholdDivisor(4),
+	)
+	test.SetETHPrice("1000")
+	test.SetStorjPrice("1")
+
+	test.InitializePayoutGroups([]*pipelinedb.Payout{
+		{
+			Payee: alice.Address,
+			USD:   decimal.RequireFromString("1.00"),
+		},
+	})
+
+	test.ProcessPayouts(func(step int, pipeline []*pipelinedb.NonceGroup, cancel func()) (bool, error) {
+		switch step {
+		case 0:
+			// Only payout was skipped
+			test.R.Empty(pipeline)
+			return true, nil
+		default:
+			test.Fatalf("not expecting step %d", step)
+			return false, nil
+		}
+	})
+
+	assert.Equal(t, pipelinedb.PayoutGroupSkipped, test.FetchPayoutGroupStatus(1))
+}
+
+func TestPipelinePaymentExceedsMaxFeeToleration(t *testing.T) {
+	// The payout is for $1.00. Our fake transaction gas limit is 70000 gas.
+	// With a gas fee cap of 4 GWEI (per gas), the most this transaction will
+	// cost is 280,000 GWEI (0.000280000 ETH). At $1000 ETH price, that comes
+	// to $0.28. We will set the max fee toleration at 25 cents and then the
+	// pipeline sleeps, drop the ETH price to $860 to drop the max fee below
+	// the toleration
+	gasFeeCap := eth.RequireParseUnit("4.000gwei")
+	gasTipCap := eth.RequireParseUnit("0.001gwei")
+	maxFeeTolerationUSD := decimal.RequireFromString("0.25")
+
+	test := NewPipelineTest(t,
+		WithGasFeeCap(gasFeeCap),
+		WithGasTipCap(gasTipCap),
+		WithMaxFeeTolerationUSD(maxFeeTolerationUSD),
+	)
+	test.SetETHPrice("1000")
+	test.SetStorjPrice("1")
+
+	var slept bool
+	test.AfterSleep(func() {
+		slept = true
+		test.SetETHPrice("860")
+	})
+
+	test.InitializePayoutGroups([]*pipelinedb.Payout{
+		{
+			Payee: alice.Address,
+			USD:   decimal.RequireFromString("1.00"),
+		},
+	})
+
+	test.ProcessPayouts(func(step int, pipeline []*pipelinedb.NonceGroup, cancel func()) (bool, error) {
+		switch step {
+		case 0:
+			// Pipeline just started with no existing nonce groups
+			test.R.Empty(pipeline)
+			return false, nil
+		case 1:
+			test.R.Len(pipeline, 1)
+			test.R.Len(pipeline[0].Txs, 1)
+			test.commit()
+			return false, nil
+		case 2:
+			// in this step it was determined that the tx was confirmed
+			return true, nil
+		default:
+			test.Fatalf("not expecting step %d", step)
+			return false, nil
+		}
+	})
+
+	assert.True(t, slept, "pipeline didn't sleep while waiting for the max fee to drop below the toleration")
+	assert.Equal(t, pipelinedb.PayoutGroupComplete, test.FetchPayoutGroupStatus(1))
+}
+
 /////////////////////////////////////////////////////////////////////////////
 // Helpers
 /////////////////////////////////////////////////////////////////////////////
@@ -735,9 +831,27 @@ func WithSpender(spender *ethtest.Account) PipelineTestOption {
 	}
 }
 
-func WithGasTipCap(gasTipCap *big.Int) PipelineTestOption {
+func WithGasFeeCap(gasFeeCap eth.Unit) PipelineTestOption {
 	return func(c *PipelineTest) {
-		c.gasTipCap = gasTipCap
+		c.gasFeeCap = &gasFeeCap
+	}
+}
+
+func WithGasTipCap(gasTipCap eth.Unit) PipelineTestOption {
+	return func(c *PipelineTest) {
+		c.gasTipCap = &gasTipCap
+	}
+}
+
+func WithThresholdDivisor(divisor int) PipelineTestOption {
+	return func(c *PipelineTest) {
+		c.thresholdDivisor = decimal.NewFromInt(int64(divisor))
+	}
+}
+
+func WithMaxFeeTolerationUSD(maxFeeTolerationUSD decimal.Decimal) PipelineTestOption {
+	return func(c *PipelineTest) {
+		c.maxFeeTolerationUSD = maxFeeTolerationUSD
 	}
 }
 
@@ -747,10 +861,14 @@ type PipelineTest struct {
 	R *require.Assertions
 
 	// config
-	limit     int
-	spender   *ethtest.Account
-	gasTipCap *big.Int
-	maxGas    *big.Int
+	limit               int
+	spender             *ethtest.Account
+	gasFeeCap           *eth.Unit
+	gasTipCap           *eth.Unit
+	thresholdDivisor    decimal.Decimal
+	maxFeeTolerationUSD decimal.Decimal
+
+	afterSleep []func()
 
 	DB *pipelinedb.DB
 
@@ -787,12 +905,18 @@ func NewPipelineTest(t *testing.T, opts ...PipelineTestOption) *PipelineTest {
 
 	test.initNetwork()
 
-	headBlock, err := test.Client.BlockByNumber(context.Background(), nil)
-	require.NoError(t, err)
-
 	// price can be increased by 12.5 % with every block when they are more than 50% full
 	// 3x time multiplier is a safe choice to have
-	test.maxGas = new(big.Int).Mul(headBlock.BaseFee(), big.NewInt(3))
+	if test.gasFeeCap == nil {
+		headBlock, err := test.Client.BlockByNumber(context.Background(), nil)
+		require.NoError(t, err)
+		baseFee := eth.UnitFromBigInt(headBlock.BaseFee(), eth.WEI)
+		t.Logf("Calculating gasFeeCap as 3x the baseFee of %s", baseFee.GWEI())
+		gasFeeCap := baseFee.Mul(eth.UnitFromInt(3, eth.WEI))
+		test.gasFeeCap = &gasFeeCap
+	}
+
+	test.SetETHPrice("1000.00")
 	return test
 }
 
@@ -805,11 +929,23 @@ func (test *PipelineTest) InitializePayoutGroups(payouts []*pipelinedb.Payout) {
 	}
 }
 
-func (test *PipelineTest) SetStorjPrice(s string) {
-	test.Quoter.SetQuote(coinmarketcap.STORJ, &coinmarketcap.Quote{
+func (test *PipelineTest) SetETHPrice(price string) {
+	test.SetPrice(coinmarketcap.ETH, price)
+}
+
+func (test *PipelineTest) SetStorjPrice(price string) {
+	test.SetPrice(coinmarketcap.STORJ, price)
+}
+
+func (test *PipelineTest) SetPrice(symbol coinmarketcap.Symbol, price string) {
+	test.Quoter.SetQuote(symbol, &coinmarketcap.Quote{
 		LastUpdated: time.Now(),
-		Price:       decimal.RequireFromString(s),
+		Price:       decimal.RequireFromString(price),
 	})
+}
+
+func (test *PipelineTest) AfterSleep(fn func()) {
+	test.afterSleep = append(test.afterSleep, fn)
 }
 
 func (test *PipelineTest) initNetwork() {
@@ -856,22 +992,25 @@ func (test *PipelineTest) newPipeline(stepInCh chan chan []*pipelinedb.NonceGrou
 		spenderKey = test.spender.Key
 	}
 	payer, err := eth.NewPayer(context.Background(),
-		test.Client,
+		overridePricer{Client: test.Client, gasFeeCap: test.gasFeeCap, gasTipCap: test.gasTipCap},
 		test.ContractAddress,
 		owner.Address,
 		spenderKey,
-		big.NewInt(1337),
-		test.gasTipCap,
-		test.maxGas)
+		testChainID,
+	)
 	test.R.NoError(err)
+
 	pipeline, err := New(payer, Config{
-		Log:          zaptest.NewLogger(test),
-		Owner:        owner.Address,
-		Quoter:       test.Quoter,
-		DB:           test.DB,
-		Limit:        test.limit,
-		stepInCh:     stepInCh,
-		pollInterval: pollInterval,
+		Log:                 zaptest.NewLogger(test),
+		Owner:               owner.Address,
+		Quoter:              test.Quoter,
+		ThresholdDivisor:    test.thresholdDivisor,
+		MaxFeeTolerationUSD: test.maxFeeTolerationUSD,
+		DB:                  test.DB,
+		Limit:               test.limit,
+		stepInCh:            stepInCh,
+		pollInterval:        pollInterval,
+		sleep:               test.sleep,
 	})
 	test.R.NoError(err)
 	return pipeline
@@ -881,7 +1020,7 @@ func (test *PipelineTest) ProcessPayouts(step func(int, []*pipelinedb.NonceGroup
 	stepInCh := make(chan chan []*pipelinedb.NonceGroup)
 	pipeline := test.newPipeline(stepInCh, time.Minute)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
 	err := pipeline.initPayout(ctx)
@@ -896,6 +1035,7 @@ func (test *PipelineTest) ProcessPayouts(step func(int, []*pipelinedb.NonceGroup
 		}
 
 		done, err := pipeline.payoutStep(ctx)
+		test.Logf("RESULT: step=%d done=%t err=%v", i, done, err)
 		var failed bool
 		failed = failed || !test.A.Equal(expectedDone, done, "step %d had an unexpected done state", i)
 		if expectedErr != nil {
@@ -947,6 +1087,10 @@ func (test *PipelineTest) FetchPayoutGroup(payoutGroupID int64) *pipelinedb.Payo
 
 func (test *PipelineTest) FetchPayoutGroupFinalTxHash(payoutGroupID int64) *common.Hash {
 	return test.FetchPayoutGroup(payoutGroupID).FinalTxHash
+}
+
+func (test *PipelineTest) FetchPayoutGroupStatus(payoutGroupID int64) pipelinedb.PayoutGroupStatus {
+	return test.FetchPayoutGroup(payoutGroupID).Status
 }
 
 func (test *PipelineTest) ValidatePipelineSlot(nonceGroup *pipelinedb.NonceGroup, nonce uint64, payoutGroupID int64, txStates ...pipelinedb.TxState) {
@@ -1019,4 +1163,31 @@ func (test *PipelineTest) pendingTransactionCount() uint {
 	pending, err := test.Client.PendingTransactionCount(context.Background())
 	test.R.NoError(err)
 	return pending
+}
+
+func (test *PipelineTest) sleep(context.Context, time.Duration) error {
+	for _, afterSleep := range test.afterSleep {
+		afterSleep()
+	}
+	return nil
+}
+
+type overridePricer struct {
+	eth.Client
+	gasFeeCap *eth.Unit
+	gasTipCap *eth.Unit
+}
+
+func (p overridePricer) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
+	if p.gasFeeCap != nil {
+		return p.gasFeeCap.WEIInt(), nil
+	}
+	return p.Client.SuggestGasPrice(ctx)
+}
+
+func (p overridePricer) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
+	if p.gasTipCap != nil {
+		return p.gasTipCap.WEIInt(), nil
+	}
+	return p.Client.SuggestGasTipCap(ctx)
 }

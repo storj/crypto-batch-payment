@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/spf13/cobra"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
@@ -23,21 +21,13 @@ type PayerConfig struct {
 	ContractAddress string
 	Owner           string
 
-	MaxGas string
-	MaxFee string
-
-	GasTipCap string
+	MaxFeeUSD string
 
 	PaymasterAddress string
 	PaymasterPayload string
 }
 
 func RegisterFlags(cmd *cobra.Command, config *PayerConfig) {
-	cmd.Flags().StringVarP(
-		&config.GasTipCap,
-		"gas-tip-cap", "",
-		"1000000000",
-		"Gas tip cap, paid on top of the base gas.")
 	cmd.Flags().StringVarP(
 		&config.Owner,
 		"owner", "",
@@ -49,20 +39,15 @@ func RegisterFlags(cmd *cobra.Command, config *PayerConfig) {
 		storjtoken.DefaultContractAddress.String(),
 		"Address of the STORJ contract on the network")
 	cmd.Flags().StringVarP(
-		&config.MaxGas,
-		"max-gas", "",
-		"70"+"000"+"000"+"000",
-		"Max gas price we're willing to consider in Wei (tip + base fee). Default: 70 GWei. Only applies to Eth type payment.")
-	cmd.Flags().StringVarP(
 		&config.PayerType,
 		"type", "",
 		payer.Eth.String(),
 		"Type of the payment (eth,zksync-era,zksync,zkwithdraw,sim,polygon)")
 	cmd.Flags().StringVarP(
-		&config.MaxFee,
-		"max-fee", "",
+		&config.MaxFeeUSD,
+		"max-fee-usd", "",
 		"",
-		"Max fee we're willing to consider. Only applies to zksync or zkwithdraw type payment.")
+		"Max fee (in USD) we're willing to consider.")
 	cmd.Flags().StringVarP(
 		&config.PaymasterAddress,
 		"paymaster-address", "",
@@ -82,15 +67,11 @@ func registerNodeAddress(cmd *cobra.Command, addr *string) {
 		"/home/storj/.ethereum/geth.ipc",
 		"Address of the ETH node to use")
 }
+
 func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeAddress string, chain string, spenderKeyPath string) (paymentPayer payer.Payer, err error) {
 	spenderKey, spenderAddress, err := loadETHKey(spenderKeyPath, "spender")
 	if err != nil {
 		return nil, err
-	}
-	var maxGas big.Int
-	_, ok := maxGas.SetString(config.MaxGas, 10)
-	if !ok {
-		return nil, errs.New("invalid max gas setting")
 	}
 
 	owner := spenderAddress
@@ -105,40 +86,17 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 	if err != nil {
 		return nil, err
 	}
-	chainID, err := convertInt(chain, 0, "chain-id")
+	chainIDInt, err := convertInt(chain, 0, "chain-id")
 	if err != nil {
 		return nil, err
 	}
-
-	var maxFee *big.Int
-	if config.MaxFee != "" {
-		var tmp big.Int
-		if _, ok := tmp.SetString(config.MaxFee, 10); !ok {
-			return nil, errs.New("invalid max fee setting")
-		}
-		maxFee = &tmp
-	}
-
-	var gasTipCap *big.Int
-	if config.GasTipCap != "" {
-		gasTipCap = new(big.Int)
-		_, ok = gasTipCap.SetString(config.GasTipCap, 10)
-		if !ok {
-			return nil, errs.New("invalid gas tip cap setting")
-		}
-		if gasTipCap.Cmp(big.NewInt(30*params.GWei)) > 0 {
-			return nil, errs.New("Gas tip cap is too high. Please use value less than 30 gwei")
-		}
-
-		if gasTipCap.Cmp(big.NewInt(int64(100))) < 0 {
-			return nil, errs.New("Gas tip cap is negligible. Please check if you really used wei unit (or set 0)")
-		}
-	}
+	chainID := int(chainIDInt.Int64())
 
 	pt, err := payer.TypeFromString(config.PayerType)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
+
 	switch pt {
 	case payer.Eth, payer.Polygon:
 		var client *ethclient.Client
@@ -154,12 +112,11 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			owner,
 			spenderKey,
 			chainID,
-			gasTipCap,
-			&maxGas,
 		)
 		if err != nil {
 			return nil, errs.Wrap(err)
 		}
+
 	case payer.ZkSyncEra:
 		var paymasterAddress *common.Address
 		var paymasterPayload []byte
@@ -172,10 +129,9 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			common.HexToAddress(config.ContractAddress),
 			nodeAddress,
 			spenderKey,
-			int(chainID.Int64()),
+			chainID,
 			paymasterAddress,
-			paymasterPayload,
-			maxFee)
+			paymasterPayload)
 		if err != nil {
 			return nil, errs.Wrap(err)
 		}

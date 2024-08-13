@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -20,7 +21,7 @@ import (
 )
 
 const (
-	dbVersion = 2
+	dbVersion = 3
 )
 
 type DB struct {
@@ -143,6 +144,26 @@ func (db *DB) Close() error {
 	return db.db.Close()
 }
 
+func (db *DB) SetBonusMultiplier(ctx context.Context, bonusMultiplier decimal.Decimal) error {
+	return db.db.UpdateNoReturn_Metadata_By_Pk(ctx, payoutdb.Metadata_Pk(1), payoutdb.Metadata_Update_Fields{
+		BonusMultiplier: payoutdb.Metadata_BonusMultiplier(bonusMultiplier.String()),
+	})
+}
+
+func (db *DB) GetBonusMultiplier(ctx context.Context) (decimal.Decimal, error) {
+	metadata, err := db.db.Find_Metadata_By_Pk(ctx, payoutdb.Metadata_Pk(1))
+	switch {
+	case err != nil:
+		return decimal.Decimal{}, err
+	case metadata == nil:
+		return decimal.Decimal{}, errors.New("no metadata row")
+	case metadata.BonusMultiplier == nil:
+		return decimal.Decimal{}, nil
+	default:
+		return decimal.NewFromString(*metadata.BonusMultiplier)
+	}
+}
+
 func (db *DB) RecordStart(ctx context.Context, spender common.Address, owner *common.Address) error {
 	var update payoutdb.Metadata_Update_Fields
 	switch {
@@ -175,6 +196,33 @@ func (db *DB) RecordStart(ctx context.Context, spender common.Address, owner *co
 	return nil
 }
 
+func (db *DB) CreatePayoutGroups(ctx context.Context, payoutGroups [][]*Payout) error {
+	return db.db.WithTx(ctx, func(tx *payoutdb.Tx) error {
+		for i, payouts := range payoutGroups {
+			payoutGroupID := int64(i + 1)
+			if err := tx.CreateNoReturn_PayoutGroup(ctx,
+				payoutdb.PayoutGroup_Id(payoutGroupID),
+				payoutdb.PayoutGroup_Create_Fields{},
+			); err != nil {
+				return err
+			}
+			for _, payout := range payouts {
+				payout.PayoutGroupID = payoutGroupID
+				if err := tx.CreateNoReturn_Payout(ctx,
+					payoutdb.Payout_CsvLine(payout.CSVLine),
+					payoutdb.Payout_Payee(payout.Payee.String()),
+					payoutdb.Payout_Usd(payout.USD.String()),
+					payoutdb.Payout_PayoutGroupId(payoutGroupID),
+					payoutdb.Payout_Mandatory(payout.Mandatory),
+				); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
 func (db *DB) CreatePayoutGroup(ctx context.Context, payoutGroupID int64, payouts []*Payout) error {
 	return db.db.WithTx(ctx, func(tx *payoutdb.Tx) error {
 		if err := tx.CreateNoReturn_PayoutGroup(ctx,
@@ -190,6 +238,7 @@ func (db *DB) CreatePayoutGroup(ctx context.Context, payoutGroupID int64, payout
 				payoutdb.Payout_Payee(payout.Payee.String()),
 				payoutdb.Payout_Usd(payout.USD.String()),
 				payoutdb.Payout_PayoutGroupId(payoutGroupID),
+				payoutdb.Payout_Mandatory(payout.Mandatory),
 			); err != nil {
 				return err
 			}
@@ -292,6 +341,31 @@ func (db *DB) FetchPayoutGroupTransactions(ctx context.Context, payoutGroupID in
 	return TransactionsFromRows(rows)
 }
 
+// FetchPayoutGroupStatus returns the status of the given payout group.
+func (db *DB) FetchPayoutGroupStatus(ctx context.Context, payoutGroupID int64) (PayoutGroupStatus, error) {
+	payoutGroup, err := db.db.Find_PayoutGroup_By_Id(ctx, payoutdb.PayoutGroup_Id(payoutGroupID))
+	switch {
+	case err != nil:
+		return "", errs.Wrap(err)
+	case payoutGroup == nil:
+		return "", errs.New("no such payout group %d", payoutGroupID)
+	case payoutGroup.Status == nil:
+		return "", nil
+	default:
+		return PayoutGroupStatus(*payoutGroup.Status), nil
+	}
+}
+
+// SetPayoutGroupStatus sets the payout group status.
+func (db *DB) SetPayoutGroupStatus(ctx context.Context, payoutGroupID int64, status PayoutGroupStatus) error {
+	return errs.Wrap(db.db.UpdateNoReturn_PayoutGroup_By_Id(ctx,
+		payoutdb.PayoutGroup_Id(payoutGroupID),
+		payoutdb.PayoutGroup_Update_Fields{
+			Status: payoutdb.PayoutGroup_Status(string(status)),
+		},
+	))
+}
+
 // FinalizeNonceGroup finalizes the transaction state for transactions in a
 // nonce group. It also sets the final tx hash on the payout group for the
 // confirmed transaction.
@@ -306,6 +380,7 @@ func (db *DB) FinalizeNonceGroup(ctx context.Context, nonceGroup *NonceGroup, st
 					payoutdb.PayoutGroup_Id(nonceGroup.PayoutGroupID),
 					payoutdb.PayoutGroup_Update_Fields{
 						FinalTxHash: payoutdb.PayoutGroup_FinalTxHash(status.Hash),
+						Status:      payoutdb.PayoutGroup_Status(string(PayoutGroupComplete)),
 					})
 				if err != nil {
 					return errs.Wrap(err)
@@ -385,25 +460,31 @@ func (db *DB) FetchPayoutProgress(ctx context.Context) (int64, int64, error) {
 }
 
 type DBStats struct {
-	Spender               *common.Address
-	Owner                 *common.Address
-	Payees                int64
-	TotalPayouts          int64
-	TotalUSD              decimal.Decimal
-	PendingPayouts        int64
-	PendingUSD            decimal.Decimal
-	TotalPayoutGroups     int64
-	PendingPayoutGroups   int64
-	TotalTransactions     int64
-	PendingTransactions   int64
-	FailedTransactions    int64
-	ConfirmedTransactions int64
-	DroppedTransactions   int64
+	Spender                         *common.Address
+	Owner                           *common.Address
+	Payees                          int64
+	TotalPayouts                    int64
+	TotalUSD                        decimal.Decimal
+	PendingPayouts                  int64
+	PendingUSD                      decimal.Decimal
+	PendingPayoutsBelowThreshold    int64
+	PendingPayoutsBelowThresholdUSD decimal.Decimal
+	TotalPayoutGroups               int64
+	PendingPayoutGroups             int64
+	SkippedPayoutGroups             int64
+	TotalTransactions               int64
+	PendingTransactions             int64
+	FailedTransactions              int64
+	ConfirmedTransactions           int64
+	DroppedTransactions             int64
 }
 
-func (db *DB) Stats(ctx context.Context) (_ *DBStats, err error) {
+func (db *DB) Stats(ctx context.Context, payoutThresholdUSD decimal.Decimal) (_ *DBStats, err error) {
 	stats := new(DBStats)
 
+	////////////////////////////////////////////////
+	// Tally total payouts
+	////////////////////////////////////////////////
 	payoutRows, err := db.db.All_Payout(ctx)
 	if err != nil {
 		return nil, errs.Wrap(err)
@@ -421,7 +502,10 @@ func (db *DB) Stats(ctx context.Context) (_ *DBStats, err error) {
 	}
 	stats.Payees = int64(len(payees))
 
-	payoutRows, err = db.db.All_Payout_By_PayoutGroup_FinalTxHash_Is_Null(ctx)
+	////////////////////////////////////////////////
+	// Tally pending payouts
+	////////////////////////////////////////////////
+	payoutRows, err = db.db.All_Payout_By_PayoutGroup_Status(ctx, payoutdb.PayoutGroup_Status_Null())
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
@@ -433,6 +517,10 @@ func (db *DB) Stats(ctx context.Context) (_ *DBStats, err error) {
 	stats.PendingPayouts = int64(len(payouts))
 	for _, payout := range payouts {
 		stats.PendingUSD = stats.PendingUSD.Add(payout.USD)
+		if payoutThresholdUSD.IsPositive() && payout.USD.Cmp(payoutThresholdUSD) < 0 {
+			stats.PendingPayoutsBelowThreshold++
+			stats.PendingPayoutsBelowThresholdUSD = stats.PendingPayoutsBelowThresholdUSD.Add(payout.USD)
+		}
 	}
 
 	stats.TotalPayoutGroups, err = db.db.Count_PayoutGroup(ctx)
@@ -440,7 +528,12 @@ func (db *DB) Stats(ctx context.Context) (_ *DBStats, err error) {
 		return nil, errs.Wrap(err)
 	}
 
-	stats.PendingPayoutGroups, err = db.db.Count_PayoutGroup_By_FinalTxHash_Is_Null(ctx)
+	stats.PendingPayoutGroups, err = db.db.Count_PayoutGroup_By_Status(ctx, payoutdb.PayoutGroup_Status_Null())
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+
+	stats.SkippedPayoutGroups, err = db.db.Count_PayoutGroup_By_Status(ctx, payoutdb.PayoutGroup_Status(string(PayoutGroupSkipped)))
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
@@ -493,6 +586,7 @@ type Payout struct {
 	Payee         common.Address
 	USD           decimal.Decimal
 	PayoutGroupID int64
+	Mandatory     bool
 }
 
 func PayoutsFromRows(rows []*payoutdb.Payout) ([]*Payout, error) {
@@ -521,12 +615,14 @@ func PayoutFromRow(row *payoutdb.Payout) (*Payout, error) {
 		Payee:         payee,
 		USD:           usd,
 		PayoutGroupID: row.PayoutGroupId,
+		Mandatory:     row.Mandatory,
 	}, nil
 }
 
 type PayoutGroup struct {
 	ID          int64
 	FinalTxHash *common.Hash
+	Status      PayoutGroupStatus
 }
 
 func PayoutGroupsFromRows(rows []*payoutdb.PayoutGroup) ([]*PayoutGroup, error) {
@@ -542,6 +638,10 @@ func PayoutGroupsFromRows(rows []*payoutdb.PayoutGroup) ([]*PayoutGroup, error) 
 }
 
 func PayoutGroupFromRow(row *payoutdb.PayoutGroup) (*PayoutGroup, error) {
+	if row == nil {
+		return nil, nil
+	}
+
 	var finalTxHash *common.Hash
 	if row.FinalTxHash != nil {
 		hash, err := batchpayment.HashFromString(*row.FinalTxHash)
@@ -551,9 +651,15 @@ func PayoutGroupFromRow(row *payoutdb.PayoutGroup) (*PayoutGroup, error) {
 		finalTxHash = &hash
 	}
 
+	var status PayoutGroupStatus
+	if row.Status != nil {
+		status = PayoutGroupStatus(*row.Status)
+	}
+
 	return &PayoutGroup{
 		ID:          row.Id,
 		FinalTxHash: finalTxHash,
+		Status:      status,
 	}, nil
 }
 
@@ -720,6 +826,10 @@ func migrateDB(ctx context.Context, db *payoutdb.DB, version int) (err error) {
 			if err := migrateV2(ctx, tx); err != nil {
 				return err
 			}
+		case 3:
+			if err := migrateV3(ctx, tx); err != nil {
+				return err
+			}
 		default:
 			return errs.New("no migration to version %d available", to)
 		}
@@ -741,7 +851,7 @@ func migrateDB(ctx context.Context, db *payoutdb.DB, version int) (err error) {
 func migrateV2(ctx context.Context, tx *sql.Tx) error {
 	// version 2 renamed the "payer" column in both metadata and
 	// transaction tables to "owner".
-	stmts := []string{
+	return execMany(ctx, tx,
 		// Rename owner in metadata table
 		`CREATE TABLE __metadata_new(
 			pk INTEGER NOT NULL,
@@ -780,8 +890,19 @@ func migrateV2(ctx context.Context, tx *sql.Tx) error {
 			SELECT pk, created_at, updated_at, hash, payer, spender, nonce, estimated_gas_price, storj_price, storj_tokens, payout_group_id, raw, state, receipt FROM tx;`,
 		`DROP TABLE tx;`,
 		`ALTER TABLE __tx_new RENAME TO tx;`,
-	}
+	)
+}
 
+func migrateV3(ctx context.Context, tx *sql.Tx) error {
+	// version 3 adds the "migration" column to the payout table
+	return execMany(ctx, tx,
+		`ALTER TABLE metadata ADD COLUMN bonus_multiplier TEXT;`,
+		`ALTER TABLE payout ADD COLUMN mandatory INTEGER NOT NULL DEFAULT 0;`,
+		`ALTER TABLE payout_group ADD COLUMN status TEXT;`,
+	)
+}
+
+func execMany(ctx context.Context, tx *sql.Tx, stmts ...string) error {
 	for _, stmt := range stmts {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return errs.Wrap(err)

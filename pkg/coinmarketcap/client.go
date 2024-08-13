@@ -28,6 +28,7 @@ const (
 type Symbol string
 
 const (
+	ETH   = "ETH"
 	STORJ = "STORJ"
 )
 

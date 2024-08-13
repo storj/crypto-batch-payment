@@ -18,6 +18,9 @@ model metadata (
 
     // The owner address
     field owner text (nullable, updatable)
+
+    // The bonus multiplier
+    field bonus_multiplier text (nullable, updatable)
 )
 
 // payout represents a payout to a single address
@@ -39,6 +42,9 @@ model payout (
 
     // The payout group this payout is a part of
     field payout_group_id payout_group.id restrict
+
+    // Whether or not the payout is mandatory
+    field mandatory bool
 )
 
 // payout_group represents a group of one or more payouts
@@ -46,9 +52,9 @@ model payout_group (
     table payout_group
     key pk
     unique id
-	index (
-		fields final_tx_hash
-	)
+    index (
+        fields final_tx_hash
+    )
 
     field pk serial64
     field created_at utimestamp (autoinsert)
@@ -60,6 +66,9 @@ model payout_group (
 
     // Hash of the transaction that completed this payout group.
     field final_tx_hash text (nullable, updatable)
+
+    // Status of the payout group. One of ("", "skipped", "done")
+    field status text (nullable, updatable)
 )
 
 // transaction represents a ETH transaction associated to a payout group.
@@ -122,8 +131,8 @@ update transaction (
 
 create metadata ( noreturn )
 update metadata ( 
-	where metadata.pk = ?
-	noreturn
+    where metadata.pk = ?
+    noreturn
 )
 
 // load payouts in payout group
@@ -151,7 +160,7 @@ read all (
 read all (
     select payout
     join payout.payout_group_id=payout_group.id
-    where payout_group.final_tx_hash = null
+    where payout_group.status = ?
 )
 
 read count (
@@ -161,6 +170,11 @@ read count (
 read count (
     select payout_group
     where payout_group.final_tx_hash = null
+)
+
+read count (
+    select payout_group
+    where payout_group.status = ?
 )
 
 read all count (
@@ -189,10 +203,15 @@ read scalar (
 )
 
 // load metadata
+read scalar (
+    select metadata
+    where metadata.pk = ?
+)
+
 read first (
     select metadata
 ) 
 
 read first (
     select metadata.version
-) 
+)

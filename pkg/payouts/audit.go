@@ -35,7 +35,7 @@ type AuditStats struct {
 	Unknown        int64
 	Mismatched     int64
 	DoublePays     int64
-	DoublePayStorj *big.Int
+	DoublePayStorj big.Int
 }
 
 func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Type, nodeAddress string, chainID int, sink AuditSink, receiptsOut string, receiptsForce bool) (*AuditStats, error) {
@@ -90,8 +90,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Type
 	}
 
 	stats := &AuditStats{
-		Total:          int64(len(dbPayouts)),
-		DoublePayStorj: new(big.Int),
+		Total: int64(len(dbPayouts)),
 	}
 
 	csvPayoutsByLine := make(map[int]*pipelinedb.Payout)
@@ -185,7 +184,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Type
 		if tx.State == pipelinedb.TxDropped && state == pipelinedb.TxConfirmed {
 			sink.ReportErrorf("Double pay for payout group %d (tokens=%s)", tx.PayoutGroupID, tx.StorjTokens)
 			stats.DoublePays++
-			stats.DoublePayStorj.Add(stats.DoublePayStorj, tx.StorjTokens)
+			stats.DoublePayStorj.Add(&stats.DoublePayStorj, tx.StorjTokens)
 		} else {
 			sink.ReportWarnf("TX state mismatch on hash %q (db=%q, node=%q)", tx.Hash, tx.State, state)
 		}

@@ -1,11 +1,13 @@
 [pipeline]
 depth_limit            = 24
 tx_delay               = "1m"
+threshold_divisor      = 5
+max_fee_toleration_usd = 1.23
 
 [coinmarketcap]
-api_url                = "https://override.test"
 api_key_path           = "override"
-cache_expiry           = "5s"
+api_url                = "https://override.test"
+cache_expiry           = "10s"
 
 [eth]
 node_address           = "https://override.test"
@@ -13,14 +15,11 @@ spender_key_path       = "override"
 erc20_contract_address = "0xe66652d41EE7e81d3fcAe1dF7F9B9f9411ac835e"
 chain_id               = 12345
 owner                  = "0xe66652d41EE7e81d3fcAe1dF7F9B9f9411ac835e"
-max_gas                = "80_000_000_000"
-gas_tip_cap            = "2_000_000_000"
 
 [zksync-era]
 node_address           = "https://override.test"
 spender_key_path       = "override"
 erc20_contract_address = "0xe66652d41EE7e81d3fcAe1dF7F9B9f9411ac835e"
 chain_id               = 12345
-max_fee                = "5678"
 paymaster_address      = "0xe66652d41EE7e81d3fcAe1dF7F9B9f9411ac835e"
 paymaster_payload      = "0123"

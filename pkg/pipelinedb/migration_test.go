@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,7 +55,7 @@ func testMigration(t *testing.T, version int) {
 
 		// Try to gather stats. This isn't an exhaustive check that the
 		// migration succeeded but reads from most tables.
-		_, err = db.Stats(ctx)
+		_, err = db.Stats(ctx, decimal.NewFromInt(0))
 		assert.NoError(t, err)
 
 		// If not readOnly, try to attempt a write to make sure the database
@@ -65,11 +66,11 @@ func testMigration(t *testing.T, version int) {
 
 		require.NoError(t, db.Close())
 
-		// Assert that the version has been updated
+		// Assert that the version has been updated to the latest
 		doRaw(t, dbPath, func(t *testing.T, rawDB *sql.DB) {
 			var gotVersion int
 			require.NoError(t, rawDB.QueryRow("SELECT version FROM metadata").Scan(&gotVersion))
-			assert.Equal(t, version+1, gotVersion)
+			assert.Equal(t, dbVersion, gotVersion)
 		})
 	}
 
