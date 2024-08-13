@@ -44,12 +44,6 @@ func TestLoad_Defaults(t *testing.T) {
 			MaxGas:               nil,
 			GasTipCap:            nil,
 		},
-		ZkSync: &config.ZkSync{
-			NodeAddress:    "https://api.zksync.io",
-			SpenderKeyPath: homePath("some.key"),
-			ChainID:        0,
-			MaxFee:         nil,
-		},
 		ZkSyncEra: &config.ZkSyncEra{
 			NodeAddress:          "https://mainnet.era.zksync.io",
 			SpenderKeyPath:       homePath("some.key"),
@@ -84,12 +78,6 @@ func TestLoad_Overrides(t *testing.T) {
 			Owner:                ptrOf(common.HexToAddress("0xe66652d41EE7e81d3fcAe1dF7F9B9f9411ac835e")),
 			MaxGas:               big.NewInt(80_000_000_000),
 			GasTipCap:            big.NewInt(2_000_000_000),
-		},
-		ZkSync: &config.ZkSync{
-			NodeAddress:    "https://override.test",
-			SpenderKeyPath: "override",
-			ChainID:        12345,
-			MaxFee:         big.NewInt(1234),
 		},
 		ZkSyncEra: &config.ZkSyncEra{
 			NodeAddress:          "https://override.test",

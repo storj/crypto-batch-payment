@@ -18,7 +18,6 @@ type Config struct {
 	Pipeline      Pipeline      `toml:"pipeline"`
 	CoinMarketCap CoinMarketCap `toml:"coinmarketcap"`
 	Eth           *Eth          `toml:"eth"`
-	ZkSync        *ZkSync       `toml:"zksync"`
 	ZkSyncEra     *ZkSyncEra    `toml:"zksync-era"`
 }
 
@@ -36,14 +35,6 @@ func (c *Config) NewPayers(ctx context.Context) (_ Payers, err error) {
 			return nil, fmt.Errorf("failed to init eth payer: %w", err)
 		}
 		payers.Add(payer.Eth, p)
-	}
-
-	if c.ZkSync != nil {
-		p, err := c.ZkSync.NewPayer(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to init zksync payer: %w", err)
-		}
-		payers.Add(payer.ZkSync, p)
 	}
 
 	if c.ZkSyncEra != nil {
@@ -71,14 +62,6 @@ func (c *Config) NewAuditors(ctx context.Context) (_ Auditors, err error) {
 			return nil, fmt.Errorf("failed to init eth auditor: %w", err)
 		}
 		auditors.Add(payer.Eth, p)
-	}
-
-	if c.ZkSync != nil {
-		p, err := c.ZkSync.NewAuditor(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to init zksync auditor: %w", err)
-		}
-		auditors.Add(payer.ZkSync, p)
 	}
 
 	if c.ZkSyncEra != nil {

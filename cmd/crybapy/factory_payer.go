@@ -14,7 +14,6 @@ import (
 	"storj.io/crypto-batch-payment/pkg/eth"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/storjtoken"
-	"storj.io/crypto-batch-payment/pkg/zksync"
 	"storj.io/crypto-batch-payment/pkg/zksyncera"
 )
 
@@ -158,28 +157,6 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			gasTipCap,
 			&maxGas,
 		)
-		if err != nil {
-			return nil, errs.Wrap(err)
-		}
-	case payer.ZkSync:
-		paymentPayer, err = zksync.NewPayer(
-			ctx,
-			nodeAddress,
-			spenderKey,
-			int(chainID.Int64()),
-			false,
-			maxFee)
-		if err != nil {
-			return nil, errs.Wrap(err)
-		}
-	case payer.ZkWithdraw:
-		paymentPayer, err = zksync.NewPayer(
-			ctx,
-			nodeAddress,
-			spenderKey,
-			int(chainID.Int64()),
-			true,
-			maxFee)
 		if err != nil {
 			return nil, errs.Wrap(err)
 		}

@@ -15,11 +15,6 @@ erc20_contract_address = "0x1111111111111111111111111111111111111111"
 # max_gas                = "70_000_000_000"
 # gas_tip_cap            = "1_000_000_000"
 
-[zksync]
-node_address           = "https://api.zksync.io"
-spender_key_path       = "~/some.key"
-# max_fee                = ""
-
 [zksync-era]
 node_address           = "https://mainnet.era.zksync.io"
 spender_key_path       = "~/some.key"
