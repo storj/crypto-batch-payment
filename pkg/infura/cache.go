@@ -15,7 +15,7 @@ func newCache(client Client, expiry time.Duration, now func() time.Time) Client 
 		client:           client,
 		expiry:           expiry,
 		suggestedGasFees: make(map[int]suggestedGasFeesEntry),
-		now:              time.Now,
+		now:              now,
 	}
 }
 
@@ -30,12 +30,12 @@ type cache struct {
 }
 
 func (c *cache) GetSuggestedGasFees(ctx context.Context, chainID int) (*SuggestedGasFees, error) {
-	now := c.now()
-
 	c.mu.Lock()
 	entry, ok := c.suggestedGasFees[chainID]
 	c.mu.Unlock()
-	if ok && entry.ts.Sub(now) < c.expiry {
+
+	now := c.now()
+	if ok && now.Sub(entry.ts) < c.expiry {
 		return entry.data, nil
 	}
 

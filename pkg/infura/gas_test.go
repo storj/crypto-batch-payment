@@ -58,37 +58,33 @@ func TestGetSuggestedGasFeesFromURL(t *testing.T) {
 	`))
 	}))
 
-	makeDecimal := func(s string) decimal.Decimal {
-		return decimal.RequireFromString(s)
-	}
-
 	makeDecimals := func(ss ...string) (dd []decimal.Decimal) {
 		for _, s := range ss {
-			dd = append(dd, makeDecimal(s))
+			dd = append(dd, decimal.RequireFromString(s))
 		}
 		return dd
 	}
 
 	want := SuggestedGasFees{
 		Low: RecommendedGasValues{
-			SuggestedMaxPriorityFeePerGas: makeDecimal("0.05"),
-			SuggestedMaxFeePerGas:         makeDecimal("16.334026964"),
+			SuggestedMaxPriorityFeePerGas: decimal.RequireFromString("0.05"),
+			SuggestedMaxFeePerGas:         decimal.RequireFromString("16.334026964"),
 			MinWaitTimeEstimateMillis:     15000,
 			MaxWaitTimeEstimateMillis:     30000,
 		},
 		Medium: RecommendedGasValues{
-			SuggestedMaxPriorityFeePerGas: makeDecimal("0.1"),
-			SuggestedMaxFeePerGas:         makeDecimal("22.083436402"),
+			SuggestedMaxPriorityFeePerGas: decimal.RequireFromString("0.1"),
+			SuggestedMaxFeePerGas:         decimal.RequireFromString("22.083436402"),
 			MinWaitTimeEstimateMillis:     15000,
 			MaxWaitTimeEstimateMillis:     45000,
 		},
 		High: RecommendedGasValues{
-			SuggestedMaxPriorityFeePerGas: makeDecimal("0.3"),
-			SuggestedMaxFeePerGas:         makeDecimal("27.982845839"),
+			SuggestedMaxPriorityFeePerGas: decimal.RequireFromString("0.3"),
+			SuggestedMaxFeePerGas:         decimal.RequireFromString("27.982845839"),
 			MinWaitTimeEstimateMillis:     15000,
 			MaxWaitTimeEstimateMillis:     60000,
 		},
-		EstimatedBaseFee:           makeDecimal("16.284026964"),
+		EstimatedBaseFee:           decimal.RequireFromString("16.284026964"),
 		NetworkCongestion:          0.5125,
 		LatestPriorityFeeRange:     makeDecimals("0", "3"),
 		HistoricalPriorityFeeRange: makeDecimals("0.000000001", "89"),

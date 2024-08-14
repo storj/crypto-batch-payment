@@ -14,7 +14,9 @@ func TestCache(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().Truncate(time.Minute)
 
-	cache := newCache(&testClient{}, time.Minute, func() time.Time {
+	var client testClient
+
+	cache := newCache(&client, time.Minute, func() time.Time {
 		return now
 	})
 
@@ -24,7 +26,7 @@ func TestCache(t *testing.T) {
 	b, err := cache.GetSuggestedGasFees(ctx, 1)
 	require.NoError(t, err)
 
-	now.Add(time.Minute)
+	now = now.Add(time.Minute)
 
 	c, err := cache.GetSuggestedGasFees(ctx, 1)
 	require.NoError(t, err)
@@ -40,13 +42,16 @@ func TestCache(t *testing.T) {
 
 	// A and C (and therefore B and D) should be different.
 	assert.NotEqual(t, a, c)
+
+	// The "real" GetSuggestedGasFees should have been called twice.
+	assert.Equal(t, 2, client.calls)
 }
 
 type testClient struct {
-	calls int64
+	calls int
 }
 
 func (c *testClient) GetSuggestedGasFees(ctx context.Context, chainID int) (*SuggestedGasFees, error) {
 	c.calls++
-	return &SuggestedGasFees{EstimatedBaseFee: decimal.NewFromInt(c.calls)}, nil
+	return &SuggestedGasFees{EstimatedBaseFee: decimal.NewFromInt(int64(c.calls))}, nil
 }
