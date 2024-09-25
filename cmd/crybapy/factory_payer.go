@@ -24,7 +24,6 @@ type PayerConfig struct {
 	Owner           string
 
 	MaxGas string
-	MaxFee string
 
 	GasTipCap string
 
@@ -58,11 +57,6 @@ func RegisterFlags(cmd *cobra.Command, config *PayerConfig) {
 		"type", "",
 		payer.Eth.String(),
 		"Type of the payment (eth,zksync-era,zksync,zkwithdraw,sim,polygon)")
-	cmd.Flags().StringVarP(
-		&config.MaxFee,
-		"max-fee", "",
-		"",
-		"Max fee we're willing to consider. Only applies to zksync or zkwithdraw type payment.")
 	cmd.Flags().StringVarP(
 		&config.PaymasterAddress,
 		"paymaster-address", "",
@@ -108,15 +102,6 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 	chainID, err := convertInt(chain, 0, "chain-id")
 	if err != nil {
 		return nil, err
-	}
-
-	var maxFee *big.Int
-	if config.MaxFee != "" {
-		var tmp big.Int
-		if _, ok := tmp.SetString(config.MaxFee, 10); !ok {
-			return nil, errs.New("invalid max fee setting")
-		}
-		maxFee = &tmp
 	}
 
 	var gasTipCap *big.Int
@@ -174,8 +159,7 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			spenderKey,
 			int(chainID.Int64()),
 			paymasterAddress,
-			paymasterPayload,
-			maxFee)
+			paymasterPayload)
 		if err != nil {
 			return nil, errs.Wrap(err)
 		}

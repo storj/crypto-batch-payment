@@ -46,8 +46,7 @@ func NewPayer(
 	key *ecdsa.PrivateKey,
 	chainID int,
 	paymasterAddress *common.Address,
-	paymasterPayload []byte,
-	maxFee *big.Int) (*Payer, error) {
+	paymasterPayload []byte) (*Payer, error) {
 
 	ethSigner, err := accounts.NewBaseSignerFromRawPrivateKey(key.D.Bytes(), int64(chainID))
 	if err != nil {
