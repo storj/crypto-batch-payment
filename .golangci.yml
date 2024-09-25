@@ -7,11 +7,11 @@ linters:
   enable:
     - bidichk                 # find dangerous bidi unicode symbols
     - bodyclose               # find unclosed http response bodies
+    - copyloopvar             # detects loop var being copied needlessly
     - dogsled                 # checks for too many ignored arguments
     - durationcheck           # verifies whether durations are multiplied, usually a mistake
     - errcheck                # find unchecked errors
     - errorlint               # finds misuses of errors
-    - exportloopref           # check for exported loop vars
     - gocritic                # checks for style, performance issues, and common programming errors
     - godot                   # dots for everything
     - err113                  # check error expressions

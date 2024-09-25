@@ -3,11 +3,11 @@ package ethtest
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/log"
-	"golang.org/x/exp/slog"
 )
 
 func EnableLogging(t *testing.T) {

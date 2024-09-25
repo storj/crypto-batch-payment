@@ -12,4 +12,4 @@ test:
 	go test -race ./...
 
 lint:
-	docker run --rm -v $(CURDIR):/app -v $(HOME)/.cache/golangci-lint/v1.59.1:/root/.cache -w /app golangci/golangci-lint:v1.59.1 golangci-lint run -v
+	docker run --rm -v $(CURDIR):/app -v $(HOME)/.cache/golangci-lint/v1.61.0:/root/.cache -w /app golangci/golangci-lint:v1.61.0 golangci-lint run -v

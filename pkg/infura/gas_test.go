@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -13,12 +14,17 @@ import (
 )
 
 func TestReal(t *testing.T) {
-	out, err := GetSuggestedGasFees(context.Background(), "1d49dbebf1a24f72b9bdfc9ad1589b68", 1)
+	apiKey := os.Getenv("CRYBAPY_INFURA_TEST_APIKEY")
+	if apiKey == "" {
+		t.Skip("Set CRYBAPY_INFURA_TEST_APIKEY environment variable to run this test")
+	}
+
+	out, err := GetSuggestedGasFees(context.Background(), apiKey, 1)
 	require.NoError(t, err)
 	b, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Println(string(b))
 
-	out, err = GetSuggestedGasFees(context.Background(), "1d49dbebf1a24f72b9bdfc9ad1589b68", 324)
+	out, err = GetSuggestedGasFees(context.Background(), apiKey, 324)
 	require.NoError(t, err)
 	b, _ = json.MarshalIndent(out, "", "  ")
 	fmt.Println(string(b))

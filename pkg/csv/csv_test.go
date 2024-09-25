@@ -129,7 +129,6 @@ func TestParseData(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		testCase := testCase // silence golint
 		t.Run(testCase.name, func(t *testing.T) {
 			rows, err := Parse([]byte(testCase.csv))
 			if testCase.err != "" {
