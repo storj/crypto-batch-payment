@@ -86,7 +86,6 @@ func TestClientNewClient(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		testCase := testCase // silence golint
 		t.Run(testCase.name, func(t *testing.T) {
 			client, err := NewClient(testCase.url, testCase.apiKey)
 			if testCase.err != "" {
@@ -281,7 +280,6 @@ func TestClientGetQuote(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		testCase := testCase // silence golint
 		t.Run(testCase.name, func(t *testing.T) {
 			handler.SetResponse(testCase.status, testCase.body)
 
