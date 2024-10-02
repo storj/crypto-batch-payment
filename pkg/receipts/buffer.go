@@ -20,6 +20,7 @@ func (b *Buffer) Emit(wallet common.Address, amount decimal.Decimal, txHash stri
 }
 
 func (b *Buffer) Finalize() []byte {
+	b.init()
 	b.csv.Flush()
 	return b.buf.Bytes()
 }
