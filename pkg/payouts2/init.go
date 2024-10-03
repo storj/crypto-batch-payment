@@ -18,8 +18,9 @@ import (
 )
 
 type InitParams struct {
-	CSVPaths        []string
-	BonusMultiplier decimal.Decimal
+	CSVPaths            []string
+	BonusMultiplier     decimal.Decimal
+	ZksyncEraMultiplier decimal.Decimal
 }
 
 func Init(ctx context.Context, params InitParams, ui InitUI) error {
@@ -27,13 +28,13 @@ func Init(ctx context.Context, params InitParams, ui InitUI) error {
 		return errors.New("prepayout CSVs are required to initialize payouts")
 	}
 
-	byType, err := loadCSVs(params.CSVPaths, params.BonusMultiplier, ui)
+	byType, err := loadCSVs(params.CSVPaths, params.BonusMultiplier, params.ZksyncEraMultiplier, ui)
 	if err != nil {
 		return err
 	}
 
 	for payerType, payouts := range byType {
-		if err := initDB(ctx, params.BonusMultiplier, payerType, payouts); err != nil {
+		if err := initDB(ctx, params.BonusMultiplier, params.ZksyncEraMultiplier, payerType, payouts); err != nil {
 			return err
 		}
 	}
@@ -41,7 +42,7 @@ func Init(ctx context.Context, params InitParams, ui InitUI) error {
 	return nil
 }
 
-func loadCSVs(csvPaths []string, bonusMultiplier decimal.Decimal, ui InitUI) (ByType, error) {
+func loadCSVs(csvPaths []string, bonusMultiplier, zksyncEraMultiplier decimal.Decimal, ui InitUI) (ByType, error) {
 	ui.Started(StartedEvent{CSVPaths: csvPaths})
 
 	aggregation := new(payoutAggregation)
@@ -76,6 +77,9 @@ func loadCSVs(csvPaths []string, bonusMultiplier decimal.Decimal, ui InitUI) (By
 			amount := prepayoutRow.Amount
 			if prepayoutRow.Bonus {
 				amount = amount.Mul(bonusMultiplier)
+			}
+			if typ == payer.ZkSyncEra {
+				amount = amount.Mul(zksyncEraMultiplier)
 			}
 
 			aggregation.Add(typ, pipelinedb.Payout{
@@ -151,7 +155,7 @@ func (agg *payoutAggregation) Finalize() ByType {
 	return final
 }
 
-func initDB(ctx context.Context, bonusMultiplier decimal.Decimal, kind payer.Type, payouts []*pipelinedb.Payout) error {
+func initDB(ctx context.Context, bonusMultiplier, zksyncEraMultiplier decimal.Decimal, kind payer.Type, payouts []*pipelinedb.Payout) error {
 	tmpDir, err := os.MkdirTemp(".", "")
 	if err != nil {
 		return err
@@ -169,6 +173,8 @@ func initDB(ctx context.Context, bonusMultiplier decimal.Decimal, kind payer.Typ
 	if err := db.SetBonusMultiplier(ctx, bonusMultiplier); err != nil {
 		return errs.Wrap(err)
 	}
+
+	// TODO: set zksyncEraMultiplier
 
 	if err := createPayoutGroups(ctx, db, payouts); err != nil {
 		return err

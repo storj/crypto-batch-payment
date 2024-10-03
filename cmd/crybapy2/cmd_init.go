@@ -17,16 +17,21 @@ import (
 )
 
 type cmdInit struct {
-	bonusMultiplier decimal.Decimal
+	bonusMultiplier     decimal.Decimal
+	zksyncEraMultiplier decimal.Decimal
 }
 
 func (c *cmdInit) Setup(params clingy.Parameters) {
 	c.bonusMultiplier = optDecimalFlag(params, "bonus-multiplier", "The bonus multiplier to apply to bonus payouts", "1")
+	c.zksyncEraMultiplier = optDecimalFlag(params, "zksync-era-multiplier", "The bonus multiplier to apply to zksync-era payouts", "1.03")
 }
 
 func (c *cmdInit) Execute(ctx context.Context) error {
 	if !c.bonusMultiplier.IsPositive() {
 		return errors.New("bonus-multiplier must be positive")
+	}
+	if !c.zksyncEraMultiplier.IsPositive() {
+		return errors.New("zksync-era-multiplier must be positive")
 	}
 
 	csvPaths, err := filepath.Glob("./*-prepayouts.csv")
@@ -38,7 +43,11 @@ func (c *cmdInit) Execute(ctx context.Context) error {
 		return errors.New("no prepayout CSVs located in current directory")
 	}
 
-	params := payouts2.InitParams{CSVPaths: csvPaths, BonusMultiplier: c.bonusMultiplier}
+	params := payouts2.InitParams{
+		CSVPaths:            csvPaths,
+		BonusMultiplier:     c.bonusMultiplier,
+		ZksyncEraMultiplier: c.zksyncEraMultiplier,
+	}
 	ui := &initUI{stdout: clingy.Stdout(ctx)}
 
 	return payouts2.Init(ctx, params, ui)

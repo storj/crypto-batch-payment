@@ -56,7 +56,9 @@ func AuditDBs(ctx context.Context, dbs map[payer.Type]*pipelinedb.DB, csvPaths [
 		sink.ReportErrorf("Invalid bonus multipler: %v", err)
 	}
 
-	csvPayoutsByType, err := loadCSVs(csvPaths, bonusMultiplier, &auditUI{sink: sink})
+	zksyncEraMultiplier := decimal.RequireFromString("1.03")
+
+	csvPayoutsByType, err := loadCSVs(csvPaths, bonusMultiplier, zksyncEraMultiplier, &auditUI{sink: sink})
 	if err != nil {
 		return nil, err
 	}
