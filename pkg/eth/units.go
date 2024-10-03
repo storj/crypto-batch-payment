@@ -124,6 +124,19 @@ func (u Unit) WEIInt() *big.Int {
 	return u.wei.BigInt()
 }
 
+func (a Unit) MarshalText() ([]byte, error) {
+	return []byte(a.String()), nil
+}
+
+func (a *Unit) UnmarshalText(input []byte) error {
+	p, err := ParseUnit(string(input))
+	if err != nil {
+		return err
+	}
+	*a = p
+	return nil
+}
+
 func DecimalToWEIInt(value decimal.Decimal, denom Denom) *big.Int {
 	return UnitFromDecimal(value, denom).WEIInt()
 }

@@ -21,16 +21,6 @@ import (
 	"storj.io/crypto-batch-payment/pkg/pipelinedb"
 )
 
-type Payer struct {
-	client        Client
-	contract      *contract.Token
-	owner         common.Address
-	chainID       int
-	signer        bind.SignerFn
-	from          common.Address
-	tokenDecimals int32
-}
-
 var (
 	_ payer.Payer = &Payer{}
 
@@ -46,19 +36,36 @@ type Client interface {
 	ethereum.TransactionReader
 }
 
+type PayerOptions struct {
+	ExtraGasTip *big.Int
+}
+
+type Payer struct {
+	client        Client
+	contract      *contract.Token
+	owner         common.Address
+	chainID       int
+	signer        bind.SignerFn
+	from          common.Address
+	tokenDecimals int32
+	opts          PayerOptions
+}
+
 func NewPayer(ctx context.Context,
 	client Client,
 	contractAddress common.Address,
 	owner common.Address,
 	key *ecdsa.PrivateKey,
-	chainID int) (*Payer, error) {
+	chainID int,
+	opts PayerOptions,
+) (*Payer, error) {
 
 	contract, err := contract.NewToken(contractAddress, client)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
 
-	opts, err := bind.NewKeyedTransactorWithChainID(key, big.NewInt(int64(chainID)))
+	transactor, err := bind.NewKeyedTransactorWithChainID(key, big.NewInt(int64(chainID)))
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
@@ -73,9 +80,10 @@ func NewPayer(ctx context.Context,
 		chainID:       chainID,
 		client:        client,
 		contract:      contract,
-		signer:        opts.Signer,
-		from:          opts.From,
+		signer:        transactor.Signer,
+		from:          transactor.From,
 		tokenDecimals: int32(decimals.Int64()),
+		opts:          opts,
 	}, nil
 }
 
@@ -138,12 +146,17 @@ func (e *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, param
 		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
+	gasTipCap := gasInfo.GasTipCap
+	if e.opts.ExtraGasTip != nil {
+		gasTipCap = new(big.Int).Add(gasTipCap, e.opts.ExtraGasTip)
+	}
+
 	opts := &bind.TransactOpts{
 		From:      e.from,
 		Signer:    e.signer,
 		GasLimit:  gasInfo.GasLimit,
 		GasFeeCap: gasInfo.GasFeeCap,
-		GasTipCap: gasInfo.GasTipCap,
+		GasTipCap: gasTipCap,
 		Value:     zero,
 		Nonce:     new(big.Int).SetUint64(params.Nonce),
 		Context:   ctx,

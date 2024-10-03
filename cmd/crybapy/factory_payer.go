@@ -112,6 +112,7 @@ func CreatePayer(ctx context.Context, log *zap.Logger, config PayerConfig, nodeA
 			owner,
 			spenderKey,
 			chainID,
+			eth.PayerOptions{},
 		)
 		if err != nil {
 			return nil, errs.Wrap(err)

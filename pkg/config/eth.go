@@ -22,6 +22,7 @@ type Eth struct {
 	ERC20ContractAddress common.Address  `toml:"erc20_contract_address"`
 	ChainID              int             `toml:"chain_id"`
 	Owner                *common.Address `toml:"owner"`
+	ExtraGasTip          eth.Unit        `toml:"extra_gas_tip"`
 }
 
 func (c *Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
@@ -63,6 +64,9 @@ func (c *Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
 		owner,
 		spenderKey,
 		c.ChainID,
+		eth.PayerOptions{
+			ExtraGasTip: c.ExtraGasTip.WEIInt(),
+		},
 	)
 	if err != nil {
 		return nil, errs.Wrap(err)

@@ -997,6 +997,7 @@ func (test *PipelineTest) newPipeline(stepInCh chan chan []*pipelinedb.NonceGrou
 		owner.Address,
 		spenderKey,
 		testChainID,
+		eth.PayerOptions{},
 	)
 	test.R.NoError(err)
 

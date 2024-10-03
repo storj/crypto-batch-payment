@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"storj.io/crypto-batch-payment/pkg/config"
+	"storj.io/crypto-batch-payment/pkg/eth"
 )
 
 func TestLoad_Defaults(t *testing.T) {
@@ -43,6 +44,7 @@ func TestLoad_Defaults(t *testing.T) {
 			ERC20ContractAddress: common.HexToAddress("0x1111111111111111111111111111111111111111"),
 			ChainID:              0,
 			Owner:                nil,
+			ExtraGasTip:          eth.Unit{},
 		},
 		ZkSyncEra: &config.ZkSyncEra{
 			NodeAddress:          "https://mainnet.era.zksync.io",
@@ -77,6 +79,7 @@ func TestLoad_Overrides(t *testing.T) {
 			ERC20ContractAddress: common.HexToAddress("0xe66652d41EE7e81d3fcAe1dF7F9B9f9411ac835e"),
 			ChainID:              12345,
 			Owner:                ptrOf(common.HexToAddress("0xe66652d41EE7e81d3fcAe1dF7F9B9f9411ac835e")),
+			ExtraGasTip:          eth.RequireParseUnit("1gwei"),
 		},
 		ZkSyncEra: &config.ZkSyncEra{
 			NodeAddress:          "https://override.test",

@@ -14,6 +14,7 @@ node_address           = "https://someaddress.test"
 spender_key_path       = "~/some.key"
 erc20_contract_address = "0x1111111111111111111111111111111111111111"
 # owner                  = ""
+# extra_gas_tip          = "0gwei"
 
 [zksync-era]
 node_address           = "https://mainnet.era.zksync.io"
