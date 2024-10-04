@@ -482,12 +482,12 @@ func (p *Pipeline) trySendTransaction(ctx context.Context, payoutGroupID int64, 
 		return nil, err
 	}
 
-	maxFeeGWEI := decimal.NewFromInt(int64(rawTx.GasLimit)).Mul(decimal.NewFromBigInt(rawTx.GasFeeCap, 0))
+	maxFeeGWEI := decimal.NewFromInt(int64(rawTx.EstimatedGasLimit)).Mul(decimal.NewFromBigInt(rawTx.EstimatedGasFeeCap, 0))
 	maxFeeUSD := ethPrice.Mul(maxFeeGWEI).Shift(-18)
 
 	txLog = txLog.With(
-		zap.Uint64("gas-limit", rawTx.GasLimit),
-		zap.Stringer("gas-fee-cap", rawTx.GasFeeCap),
+		zap.Uint64("estimated-gas-limit", rawTx.EstimatedGasLimit),
+		zap.Stringer("estimated-gas-fee-cap", rawTx.EstimatedGasFeeCap),
 		zap.Stringer("max-fee-usd", maxFeeUSD),
 	)
 

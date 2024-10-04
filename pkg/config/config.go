@@ -12,6 +12,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
+	"storj.io/crypto-batch-payment/pkg/eth"
 	"storj.io/crypto-batch-payment/pkg/payer"
 	"storj.io/crypto-batch-payment/pkg/pipeline"
 )
@@ -116,6 +117,7 @@ func Parse(data []byte) (Config, error) {
 		defaultCoinMarketCapCacheExpiry = Duration(time.Second * 5)
 	)
 	var (
+		defaultGasFeeCapOverride   = eth.RequireParseUnit("70gwei")
 		defaultMaxFeeTolerationUSD = decimal.Decimal{}
 	)
 
@@ -137,6 +139,11 @@ func Parse(data []byte) (Config, error) {
 	d.DisallowUnknownFields()
 	if err := d.Decode(&config); err != nil {
 		return Config{}, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	// Set ETH defaults.
+	if config.Eth != nil && config.Eth.GasFeeCapOverride == nil {
+		config.Eth.GasFeeCapOverride = &defaultGasFeeCapOverride
 	}
 
 	return config, nil

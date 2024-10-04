@@ -18,13 +18,13 @@ type Transaction struct {
 	// Nonce is the nonce from the group.
 	Nonce uint64
 
-	// GasLimit is an estimate of the amount of gas needed for the transaction.
-	// It is usually higher than the real amount used.
-	GasLimit uint64
+	// EstimatedGasLimit is an estimate of the amount of gas needed for the
+	// transaction. It is usually higher than the real amount used.
+	EstimatedGasLimit uint64
 
-	// GasFeeCap is the most per-gas fee that the transaction will incur.
-	// The actual fee will likely be smaller than this.
-	GasFeeCap *big.Int
+	// EstimatedGasFeeCap is an estimate of the most per-gas fee that the
+	// transaction will incur. The actual fee will likely be smaller than this.
+	EstimatedGasFeeCap *big.Int
 
 	// Raw is the internal representation of transaction data.
 	Raw any

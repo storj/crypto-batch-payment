@@ -164,10 +164,10 @@ func (pretendPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, p
 	binary.BigEndian.PutUint64(hash[:], params.Nonce)
 
 	return payer.Transaction{
-		Hash:      hash.Hex(),
-		Nonce:     params.Nonce,
-		GasLimit:  50000,
-		GasFeeCap: big.NewInt(1000000000), // 1gwei
+		Hash:               hash.Hex(),
+		Nonce:              params.Nonce,
+		EstimatedGasLimit:  50000,
+		EstimatedGasFeeCap: big.NewInt(1000000000), // 1gwei
 	}, from, nil
 }
 

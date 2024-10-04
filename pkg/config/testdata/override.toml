@@ -15,6 +15,7 @@ spender_key_path       = "override"
 erc20_contract_address = "0xe66652d41EE7e81d3fcAe1dF7F9B9f9411ac835e"
 chain_id               = 12345
 owner                  = "0xe66652d41EE7e81d3fcAe1dF7F9B9f9411ac835e"
+gas_fee_cap_override   = "99gwei"
 extra_gas_tip          = "1gwei"
 
 [zksync-era]

@@ -85,10 +85,10 @@ func (s *SimPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, pa
 	}
 	txHash := common.BytesToHash(hash).String()
 	return Transaction{
-		Hash:      txHash,
-		Nonce:     params.Nonce,
-		GasLimit:  gasInfo.GasLimit,
-		GasFeeCap: gasInfo.GasFeeCap,
+		Hash:               txHash,
+		Nonce:              params.Nonce,
+		EstimatedGasLimit:  gasInfo.GasLimit,
+		EstimatedGasFeeCap: gasInfo.GasFeeCap,
 		Raw: map[string]interface{}{
 			"hash": txHash,
 		},

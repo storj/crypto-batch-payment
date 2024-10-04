@@ -997,7 +997,9 @@ func (test *PipelineTest) newPipeline(stepInCh chan chan []*pipelinedb.NonceGrou
 		owner.Address,
 		spenderKey,
 		testChainID,
-		eth.PayerOptions{},
+		eth.PayerOptions{
+			GasFeeCapOverride: big.NewInt(70_000_000_000),
+		},
 	)
 	test.R.NoError(err)
 

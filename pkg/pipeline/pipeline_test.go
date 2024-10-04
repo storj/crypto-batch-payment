@@ -234,11 +234,11 @@ func (t *TestPayer) CreateRawTransaction(ctx context.Context, log *zap.Logger, p
 	hash := make([]byte, 32)
 	_, err = rand.Read(hash)
 	return payer.Transaction{
-		Hash:      common.BytesToHash(hash).String(),
-		Nonce:     params.Nonce,
-		GasLimit:  gasInfo.GasLimit,
-		GasFeeCap: gasInfo.GasFeeCap,
-		Raw:       make(map[string]string),
+		Hash:               common.BytesToHash(hash).String(),
+		Nonce:              params.Nonce,
+		EstimatedGasLimit:  gasInfo.GasLimit,
+		EstimatedGasFeeCap: gasInfo.GasFeeCap,
+		Raw:                make(map[string]string),
 	}, common.HexToAddress("0x94F31A2f6522dbf0594bf9c37F124fB6EAC4d9cd"), err
 }
 

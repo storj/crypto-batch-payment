@@ -213,11 +213,11 @@ func (p *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, param
 	))
 
 	return payer.Transaction{
-		Hash:      hash.String(),
-		Nonce:     params.Nonce,
-		GasLimit:  feeEstimate.GasLimit.ToInt().Uint64(),
-		GasFeeCap: feeEstimate.MaxFeePerGas.ToInt(),
-		Raw:       rawTx,
+		Hash:               hash.String(),
+		Nonce:              params.Nonce,
+		EstimatedGasLimit:  feeEstimate.GasLimit.ToInt().Uint64(),
+		EstimatedGasFeeCap: feeEstimate.MaxFeePerGas.ToInt(),
+		Raw:                rawTx,
 	}, from, nil
 }
 

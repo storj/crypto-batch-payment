@@ -37,6 +37,12 @@ type Client interface {
 }
 
 type PayerOptions struct {
+	// GasFeeCap, if set, overrides the suggested gas fee cap for the
+	// transaction. The suggested gas fee cap will still be used for evaluating
+	// the skipped transaction threshold.
+	GasFeeCapOverride *big.Int
+
+	// ExtraGasTip is an extra tip on top of the suggested gas tip cap.
 	ExtraGasTip *big.Int
 }
 
@@ -146,6 +152,11 @@ func (e *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, param
 		return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 	}
 
+	gasFeeCap := gasInfo.GasFeeCap
+	if e.opts.GasFeeCapOverride != nil {
+		gasFeeCap = e.opts.GasFeeCapOverride
+	}
+
 	gasTipCap := gasInfo.GasTipCap
 	if e.opts.ExtraGasTip != nil {
 		gasTipCap = new(big.Int).Add(gasTipCap, e.opts.ExtraGasTip)
@@ -155,7 +166,7 @@ func (e *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, param
 		From:      e.from,
 		Signer:    e.signer,
 		GasLimit:  gasInfo.GasLimit,
-		GasFeeCap: gasInfo.GasFeeCap,
+		GasFeeCap: gasFeeCap,
 		GasTipCap: gasTipCap,
 		Value:     zero,
 		Nonce:     new(big.Int).SetUint64(params.Nonce),
@@ -210,11 +221,11 @@ func (e *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, param
 	)
 
 	return payer.Transaction{
-		Hash:      rawTx.Hash().Hex(),
-		Nonce:     params.Nonce,
-		GasLimit:  opts.GasLimit,
-		GasFeeCap: opts.GasFeeCap,
-		Raw:       rawTx,
+		Hash:               rawTx.Hash().Hex(),
+		Nonce:              params.Nonce,
+		EstimatedGasLimit:  gasInfo.GasLimit,
+		EstimatedGasFeeCap: gasInfo.GasFeeCap,
+		Raw:                rawTx,
 	}, e.from, nil
 }
 
