@@ -3,6 +3,7 @@ package zksyncera
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -239,8 +240,11 @@ func (p *Payer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup
 
 	txHash := common.HexToHash(nonceGroup.Txs[0].Hash)
 	zkReceipt, err := p.zk.TransactionReceipt(ctx, txHash)
-	if err != nil {
-		return pipelinedb.TxDropped, []*pipelinedb.TxStatus{}, errs.Wrap(err)
+	switch {
+	case errors.Is(err, ethereum.NotFound):
+		return pipelinedb.TxDropped, nil, nil
+	case err != nil:
+		return pipelinedb.TxDropped, nil, errs.Wrap(err)
 	}
 
 	status := pipelinedb.TxConfirmed
