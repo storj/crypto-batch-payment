@@ -498,7 +498,9 @@ func (p *Pipeline) trySendTransaction(ctx context.Context, payoutGroupID int64, 
 
 	if p.thresholdDivisor.IsPositive() {
 		thresholdUSD := payout.USD.Div(p.thresholdDivisor)
-		if !payout.Mandatory && thresholdUSD.Cmp(maxFeeUSD) < 0 {
+		// This is where we'd check if the payment is mandatory, and only skip
+		// if not, but mandatoriness is not being honored at this time.
+		if thresholdUSD.Cmp(maxFeeUSD) < 0 {
 			txLog.Warn("Skipping transaction because payout is below the minimum payout threshold", zap.Stringer("threshold-usd", thresholdUSD))
 			if err := p.db.SetPayoutGroupStatus(ctx, payoutGroupID, pipelinedb.PayoutGroupSkipped); err != nil {
 				return nil, errs.Wrap(err)
