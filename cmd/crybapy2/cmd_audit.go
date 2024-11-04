@@ -110,13 +110,16 @@ func (cmd *cmdAudit) Execute(ctx context.Context) error {
 		fancy.Finfof(stdout, "Total.......................: %d\n", txStats.Total)
 		if txStats.Confirmed != txStats.Total {
 			fancy.Fprintf(stdout, fancy.Warn, "Confirmed...................: %d\n", txStats.Confirmed)
-			bad = true
 		} else {
 			fancy.Fprintf(stdout, fancy.Info, "Confirmed...................: %d\n", txStats.Confirmed)
 		}
 		fancy.Finfof(stdout, "False Confirmed.............: %d\n", txStats.FalseConfirmed)
 		fancy.Finfof(stdout, "Overpaid....................: %d\n", txStats.Overpaid)
-		fancy.Finfof(stdout, "Skipped.....................: %d\n", txStats.Skipped)
+		if txStats.Skipped > 0 {
+			fancy.Fprintf(stdout, fancy.Warn, "Skipped.....................: %d\n", txStats.Skipped)
+		} else {
+			fancy.Finfof(stdout, "Skipped.....................: 0\n")
+		}
 		fancy.Finfof(stdout, "Unstarted...................: %d\n", txStats.Unstarted)
 		fancy.Finfof(stdout, "Pending.....................: %d\n", txStats.Pending)
 		fancy.Finfof(stdout, "Failed......................: %d\n", txStats.Failed)
@@ -131,6 +134,10 @@ func (cmd *cmdAudit) Execute(ctx context.Context) error {
 		if txStats.DoublePays > 0 {
 			fancy.Ferrorf(stdout, "Double Pays.................: %d\n", txStats.DoublePays)
 			fancy.Ferrorf(stdout, "Double Pay Amount (raw STORJ value): %s\n", &txStats.DoublePayStorj)
+			bad = true
+		}
+
+		if txStats.Confirmed+txStats.Skipped != txStats.Total {
 			bad = true
 		}
 	}
