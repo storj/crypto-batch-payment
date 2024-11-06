@@ -62,9 +62,9 @@ func (a *Auditor) CheckConfirmedTransactionState(ctx context.Context, hash strin
 
 func stateFromStatus(status string) (pipelinedb.TxState, error) {
 	switch strings.ToLower(status) {
-	case "pending", "included":
+	case "pending":
 		return pipelinedb.TxPending, nil
-	case "verified":
+	case "included", "verified":
 		return pipelinedb.TxConfirmed, nil
 	case "failed":
 		return pipelinedb.TxFailed, nil
