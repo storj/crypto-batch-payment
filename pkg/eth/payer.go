@@ -3,6 +3,7 @@ package eth
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"go.uber.org/zap"
 
 	batchpayment "storj.io/crypto-batch-payment/pkg"
@@ -232,7 +234,17 @@ func (e *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, param
 func (e *Payer) SendTransaction(ctx context.Context, log *zap.Logger, t payer.Transaction) error {
 	switch tx := t.Raw.(type) {
 	case *types.Transaction:
-		return errs.Wrap(e.client.SendTransaction(ctx, tx))
+		err := e.client.SendTransaction(ctx, tx)
+		if err != nil {
+			var rpcErr rpc.Error
+			if errors.As(err, &rpcErr) {
+				log.Error("Failed to send transaction", zap.String("msg", rpcErr.Error()), zap.Int("code", rpcErr.ErrorCode()))
+			} else {
+				log.Error("Failed to send transaction", zap.Error(err))
+			}
+			return errs.Wrap(err)
+		}
+		return nil
 	default:
 		return errs.Errorf("payer doesn't support transaction %v", t.Raw)
 	}
