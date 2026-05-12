@@ -30,7 +30,7 @@ func TestReal(t *testing.T) {
 	fmt.Println(string(b))
 }
 
-func TestGetSuggestedGasFeesFromURL(t *testing.T) {
+func TestGetSuggestedGasFees(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ContentType", "application/json")
 		_, _ = w.Write([]byte(`

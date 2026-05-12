@@ -3,7 +3,6 @@ package config
 import (
 	"context"
 	"errors"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 
@@ -19,7 +18,6 @@ type ZkSyncEra struct {
 	SpenderKeyPath       Path            `toml:"spender_key_path"`
 	ERC20ContractAddress common.Address  `toml:"erc20_contract_address"`
 	ChainID              int             `toml:"chain_id"`
-	MaxFee               *big.Int        `toml:"max_fee"`
 	PaymasterAddress     *common.Address `toml:"paymaster_address"`
 	PaymasterPayload     HexString       `toml:"paymaster_payload"`
 }
@@ -49,8 +47,7 @@ func (c ZkSyncEra) NewPayer(ctx context.Context) (_ Payer, err error) {
 		spenderKey,
 		c.ChainID,
 		c.PaymasterAddress,
-		c.PaymasterPayload,
-		c.MaxFee)
+		c.PaymasterPayload)
 	if err != nil {
 		return nil, err
 	}

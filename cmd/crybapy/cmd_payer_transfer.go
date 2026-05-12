@@ -112,14 +112,14 @@ func doPayerTransfer(config *payerTransferConfig, spenderKeyPath string) error {
 					LastUpdated: time.Now(),
 				}, err
 			}),
-
 			PipelineLimit: pipeline.DefaultLimit,
 			TxDelay:       pipeline.DefaultTxDelay,
 			Drain:         false,
 			PromptConfirm: promptConfirm,
 		},
 		db,
-		payer)
+		payer,
+	)
 	if err != nil {
 		return err
 	}

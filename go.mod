@@ -4,6 +4,7 @@ go 1.23.1
 
 require (
 	github.com/ethereum/go-ethereum v1.14.9
+	github.com/kyokomi/emoji/v2 v2.2.13
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mattn/go-sqlite3 v1.14.23
@@ -12,10 +13,12 @@ require (
 	github.com/shopspring/decimal v1.4.0
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
+	github.com/zeebo/clingy v0.0.0-20231031161054-57bed7a7d965
 	github.com/zeebo/errs v1.3.0
 	github.com/zeebo/errs/v2 v2.0.5
 	github.com/zksync-sdk/zksync2-go v0.7.0
 	go.uber.org/zap v1.27.0
+	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 	storj.io/common v0.0.0-20211028030249-499e2fb72464
 )
 
@@ -102,7 +105,6 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.27.0 // indirect
-	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect
 	golang.org/x/text v0.18.0 // indirect

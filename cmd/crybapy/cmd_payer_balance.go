@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +28,6 @@ func newPayerBalanceCommand(parentConfig *payerCommandConfig) *cobra.Command {
 }
 
 func doPayerBalance(config *payerBalanceConfig, spenderKeyPath string) error {
-
 	log, err := openConsoleLog()
 	if err != nil {
 		return err
@@ -40,11 +40,7 @@ func doPayerBalance(config *payerBalanceConfig, spenderKeyPath string) error {
 	if err != nil {
 		return err
 	}
-	dec, err := payer.GetTokenDecimals(config.Ctx)
-	if err != nil {
-		return err
-	}
 
-	fmt.Println(printToken(balance, dec, ""))
+	fmt.Println(printToken(balance, payer.Decimals(), ""))
 	return nil
 }

@@ -58,8 +58,15 @@ func GetSuggestedGasFeesFromURL(ctx context.Context, reqURL string) (*SuggestedG
 		return nil, errs.New("expected status code 200 but got %d: %s", resp.StatusCode, tryRead(resp.Body))
 	}
 
+	jsonBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+
+	fmt.Printf("SUGGESTED: %s\n", string(jsonBytes))
+
 	out := new(SuggestedGasFees)
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	if err := json.Unmarshal(jsonBytes, out); err != nil {
 		return nil, errs.Wrap(err)
 	}
 

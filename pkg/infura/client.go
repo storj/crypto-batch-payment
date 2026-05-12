@@ -6,7 +6,7 @@ type Client interface {
 	GetSuggestedGasFees(ctx context.Context, chainID int) (*SuggestedGasFees, error)
 }
 
-func NewClient(apiKey string) *client {
+func NewClient(apiKey string) Client {
 	return &client{apiKey: apiKey}
 }
 

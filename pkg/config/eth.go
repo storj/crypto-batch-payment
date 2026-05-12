@@ -2,8 +2,8 @@ package config
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -14,8 +14,6 @@ import (
 
 const (
 	defaultEthChainID = 1
-	defaultMaxGas     = "70_000_000_000"
-	defaultGasTipCap  = "1_000_000_000"
 )
 
 type Eth struct {
@@ -24,11 +22,11 @@ type Eth struct {
 	ERC20ContractAddress common.Address  `toml:"erc20_contract_address"`
 	ChainID              int             `toml:"chain_id"`
 	Owner                *common.Address `toml:"owner"`
-	MaxGas               *big.Int        `toml:"max_gas"`
-	GasTipCap            *big.Int        `toml:"gas_tip_cap"`
+	GasFeeCapOverride    *eth.Unit       `toml:"gas_fee_cap_override"`
+	ExtraGasTip          *eth.Unit       `toml:"extra_gas_tip"`
 }
 
-func (c Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
+func (c *Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
 	// Check for required parameters
 	if c.NodeAddress == "" {
 		return nil, errors.New("node_address is not configured")
@@ -41,14 +39,7 @@ func (c Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
 	if c.ChainID == 0 {
 		c.ChainID = defaultEthChainID
 	}
-	if c.MaxGas == nil {
-		c.MaxGas, _ = new(big.Int).SetString(defaultMaxGas, 0)
-	}
-	if c.GasTipCap == nil {
-		c.GasTipCap, _ = new(big.Int).SetString(defaultGasTipCap, 0)
-	}
-
-	spenderKey, spenderAddress, err := loadSpenderKey(string(c.SpenderKeyPath))
+	spenderKey, spenderAddress, err := c.NewSpender()
 	if err != nil {
 		return nil, err
 	}
@@ -58,9 +49,9 @@ func (c Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
 		owner = *c.Owner
 	}
 
-	client, err := ethclient.Dial(c.NodeAddress)
+	client, err := c.NewClient()
 	if err != nil {
-		return nil, errs.Wrap(err)
+		return nil, err
 	}
 	defer func() {
 		if err != nil {
@@ -68,14 +59,21 @@ func (c Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
 		}
 	}()
 
+	var opts eth.PayerOptions
+	if c.GasFeeCapOverride != nil {
+		opts.GasFeeCapOverride = c.GasFeeCapOverride.WEIInt()
+	}
+	if c.ExtraGasTip != nil {
+		opts.ExtraGasTip = c.ExtraGasTip.WEIInt()
+	}
+
 	ethPayer, err := eth.NewPayer(ctx,
 		client,
 		c.ERC20ContractAddress,
 		owner,
 		spenderKey,
-		big.NewInt(int64(c.ChainID)),
-		c.GasTipCap,
-		c.MaxGas,
+		c.ChainID,
+		opts,
 	)
 	if err != nil {
 		return nil, errs.Wrap(err)
@@ -87,7 +85,7 @@ func (c Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
 	}, nil
 }
 
-func (c Eth) NewAuditor(ctx context.Context) (_ Auditor, err error) {
+func (c *Eth) NewAuditor(ctx context.Context) (_ Auditor, err error) {
 	// Check for required parameters
 	if c.NodeAddress == "" {
 		return nil, errors.New("node_address is not configured")
@@ -98,4 +96,13 @@ func (c Eth) NewAuditor(ctx context.Context) (_ Auditor, err error) {
 		return nil, errs.Wrap(err)
 	}
 	return ethAuditor, nil
+}
+
+func (c *Eth) NewClient() (*ethclient.Client, error) {
+	client, err := ethclient.Dial(c.NodeAddress)
+	return client, errs.Wrap(err)
+}
+
+func (c *Eth) NewSpender() (*ecdsa.PrivateKey, common.Address, error) {
+	return loadSpenderKey(string(c.SpenderKeyPath))
 }

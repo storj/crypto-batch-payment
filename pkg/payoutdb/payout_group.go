@@ -13,6 +13,8 @@ const (
 		WHERE
 			final_tx_hash IS NULL
 		AND
+			ifnull(status, '') == ''
+		AND
 			id NOT IN (SELECT payout_group_id FROM tx WHERE state == 'pending')
 `
 )
