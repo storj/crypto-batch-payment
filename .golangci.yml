@@ -101,9 +101,7 @@ linters-settings:
     # report about assignment of errors to blank identifier: `num, _ := strconv.Atoi(numStr)`;
     # default is false: such cases aren't reported by default.
     check-blank: false
-  govet:
-    # report about shadowed variables
-    #TODO# check-shadowing: true
+  govet: {}
   gocritic:
     disabled-checks:
       - ifElseChain
