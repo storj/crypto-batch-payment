@@ -124,16 +124,16 @@ func (u Unit) WEIInt() *big.Int {
 	return u.wei.BigInt()
 }
 
-func (a Unit) MarshalText() ([]byte, error) {
-	return []byte(a.String()), nil
+func (u Unit) MarshalText() ([]byte, error) {
+	return []byte(u.String()), nil
 }
 
-func (a *Unit) UnmarshalText(input []byte) error {
+func (u *Unit) UnmarshalText(input []byte) error {
 	p, err := ParseUnit(string(input))
 	if err != nil {
 		return err
 	}
-	*a = p
+	*u = p
 	return nil
 }
 
