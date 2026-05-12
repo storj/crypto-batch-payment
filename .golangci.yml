@@ -101,25 +101,10 @@ linters-settings:
     # report about assignment of errors to blank identifier: `num, _ := strconv.Atoi(numStr)`;
     # default is false: such cases aren't reported by default.
     check-blank: false
-  govet:
-    # report about shadowed variables
-    #TODO# check-shadowing: true
-
-    # Obtain type information from installed (to $GOPATH/pkg) package files:
-    # golangci-lint will execute `go install -i` and `go test -i` for analyzed packages
-    # before analyzing them.
-    # Enable this option only if all conditions are met:
-    #  1. you use only "fast" linters (--fast e.g.): no program loading occurs
-    #  2. you use go >= 1.10
-    #  3. you do repeated runs (false for CI) or cache $GOPATH/pkg or `go env GOCACHE` dir in CI.
-    use-installed-packages: false
+  govet: {}
   gocritic:
     disabled-checks:
       - ifElseChain
-  goimports:
-    local: "storj.io"
-  golint:
-    min-confidence: 0.8
   gofmt:
     simplify: true
   gocyclo:
@@ -129,26 +114,10 @@ linters-settings:
   goconst:
     min-len: 3
     min-occurrences: 3
-  misspell:
+  misspell: {}
   lll:
     line-length: 140
     tab-width: 1
-  unused:
-    # treat code as a program (not a library) and report unused exported identifiers; default is false.
-    # XXX: if you enable this setting, unused will report a lot of false-positives in text editors:
-    # if it's called for subdir of a project it can't find funcs usages. All text editor integrations
-    # with golangci-lint call it on a directory with the changed file.
-    check-exported: false
-  unparam:
-    # call graph construction algorithm (cha, rta). In general, use cha for libraries,
-    # and rta for programs with main packages. Default is cha.
-    algo: cha
-
-    # Inspect exported functions, default is false. Set to true if no external program/library imports your code.
-    # XXX: if you enable this setting, unparam will report a lot of false-positives in text editors:
-    # if it's called for subdir of a project it can't find external interfaces. All text editor integrations
-    # with golangci-lint call it on a directory with the changed file.
-    check-exported: false
   nakedret:
     # make an issue if func has more lines of code than this setting and it has naked returns; default is 30
     max-func-lines: 30
