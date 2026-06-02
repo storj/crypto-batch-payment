@@ -71,7 +71,6 @@ func abigen() error {
 		[]string{string(bin)},
 		nil,
 		"contract",
-		bind.LangGo,
 		nil,
 		nil,
 	)
