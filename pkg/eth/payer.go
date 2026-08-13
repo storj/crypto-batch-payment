@@ -236,12 +236,19 @@ func (e *Payer) SendTransaction(ctx context.Context, log *zap.Logger, t payer.Tr
 	case *types.Transaction:
 		err := e.client.SendTransaction(ctx, tx)
 		if err != nil {
+			fields := []zap.Field{zap.Error(err)}
 			var rpcErr rpc.Error
 			if errors.As(err, &rpcErr) {
-				log.Error("Failed to send transaction", zap.String("msg", rpcErr.Error()), zap.Int("code", rpcErr.ErrorCode()))
-			} else {
-				log.Error("Failed to send transaction", zap.Error(err))
+				fields = append(fields,
+					zap.String("msg", rpcErr.Error()),
+					zap.Int("code", rpcErr.ErrorCode()),
+				)
 			}
+			var dataErr rpc.DataError
+			if errors.As(err, &dataErr) {
+				fields = append(fields, zap.Any("data", dataErr.ErrorData()))
+			}
+			log.Error("Failed to send transaction", fields...)
 			return errs.Wrap(err)
 		}
 		return nil
