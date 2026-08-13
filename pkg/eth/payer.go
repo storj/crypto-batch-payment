@@ -258,13 +258,11 @@ func (e *Payer) SendTransaction(ctx context.Context, log *zap.Logger, t payer.Tr
 }
 
 func (e *Payer) EstimatedGasFee(ctx context.Context) (*big.Int, error) {
-	lastBlock, err := e.client.BlockByNumber(ctx, nil)
+	header, err := e.client.HeaderByNumber(ctx, nil)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
-
-	baseGasFee := lastBlock.BaseFee()
-	return baseGasFee, nil
+	return header.BaseFee, nil
 }
 
 func (e *Payer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
