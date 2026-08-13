@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shopspring/decimal"
 	"github.com/zeebo/clingy"
 	"storj.io/crypto-batch-payment/pkg/config"
 	"storj.io/crypto-batch-payment/pkg/fancy"
@@ -228,6 +229,8 @@ func reconcilePayer(
 			}
 		}
 
+		header := groupHeader(groupID, groupPending)
+
 		switch {
 		case len(confirmed) > 1:
 			// Multiple confirmed txs in the same payout group means chain
@@ -236,8 +239,9 @@ func reconcilePayer(
 			for _, tx := range confirmed {
 				hashes = append(hashes, tx.Hash)
 			}
-			fancy.Ferrorf(stderr, "  payout-group %d: %d confirmed txs on chain (DOUBLE PAY): %s; leaving DB unchanged\n",
-				groupID, len(confirmed), strings.Join(hashes, ", "))
+			fancy.Ferrorf(stderr, "%s\n  action: %d confirmed txs on chain (DOUBLE PAY); leaving DB unchanged\n  confirmed hashes: %s\n",
+				header, len(confirmed), strings.Join(hashes, ", "))
+			writePayoutDetails(ctx, stderr, db, groupID, groupPending, "  ")
 			bad = true
 
 		case len(confirmed) == 1:
@@ -250,8 +254,9 @@ func reconcilePayer(
 					State: states[tx.Hash],
 				})
 			}
-			fancy.Finfof(stdout, "  payout-group %d: confirmed=%s; drop %d, fail %d, keep-pending %d\n",
-				groupID, confirmed[0].Hash, len(dropped), len(failed), len(stillPending))
+			fancy.Finfof(stdout, "%s\n  action: finalize with confirmed=%s (drop=%d fail=%d keep-pending=%d)\n",
+				header, confirmed[0].Hash, len(dropped), len(failed), len(stillPending))
+			writePayoutDetails(ctx, stdout, db, groupID, groupPending, "  ")
 			if apply {
 				if err := db.FinalizeNonceGroup(ctx, ng, statuses); err != nil {
 					return false, fmt.Errorf("failed to finalize payout group %d: %w", groupID, err)
@@ -260,13 +265,14 @@ func reconcilePayer(
 
 		case len(stillPending) > 0:
 			// Something is still in flight — leave it alone.
-			fancy.Finfof(stdout, "  payout-group %d: %d tx(s) still pending on chain; leaving alone\n",
-				groupID, len(stillPending))
+			fancy.Finfof(stdout, "%s\n  action: %d tx(s) still pending on chain; leaving alone\n",
+				header, len(stillPending))
 
 		case len(failed) > 0 && len(dropped) == 0:
 			// All accounted-for txs failed. Record failure; don't touch payout group.
-			fancy.Fwarnf(stderr, "  payout-group %d: all %d recorded tx(s) FAILED on chain; marking failed; payout group not completed\n",
-				groupID, len(failed))
+			fancy.Fwarnf(stderr, "%s\n  action: all %d recorded tx(s) FAILED on chain; marking failed; payout group NOT completed\n",
+				header, len(failed))
+			writePayoutDetails(ctx, stderr, db, groupID, groupPending, "  ")
 			bad = true
 			if apply {
 				for _, tx := range failed {
@@ -280,17 +286,21 @@ func reconcilePayer(
 			// All dropped (with possible failed mixed in). Bucket C or A.
 			// Report and mark them dropped. The pipeline will re-attempt
 			// this payout group as unattached-unfinished after this.
-			owner := ""
+			var spender string
 			var nonce uint64
 			if len(groupPending) > 0 {
-				owner = groupPending[0].Owner.String()
+				spender = groupPending[0].Spender.String()
 				nonce = groupPending[0].Nonce
 			}
-			fancy.Fwarnf(stderr, "  payout-group %d: all %d recorded tx(s) DROPPED on chain (nonce=%d owner=%s).\n",
-				groupID, len(dropped)+len(failed), nonce, owner)
-			fancy.Fwarnf(stderr, "    If nonce %d is consumed on chain, look up %s's tx at that nonce and re-run with --complete %d:<hash>.\n",
-				nonce, owner, groupID)
-			fancy.Fwarnf(stderr, "    Otherwise the pipeline will re-attempt this payout group at the current chain nonce.\n")
+			fancy.Fwarnf(stderr, "%s\n  action: all %d recorded tx(s) DROPPED on chain — needs verification\n",
+				header, len(dropped)+len(failed))
+			writePayoutDetails(ctx, stderr, db, groupID, groupPending, "  ")
+			writeRecordedHashes(stderr, groupPending, "  ")
+			fancy.Fwarnf(stderr, "  If nonce %d is used on chain (spender's next nonce > %d), find the confirming tx from %s at nonce %d\n",
+				nonce, nonce, spender, nonce)
+			fancy.Fwarnf(stderr, "  and verify its Transfer log matches the payee(s) and STORJ token amount(s) above. Then:\n")
+			fancy.Fwarnf(stderr, "      crybapy2 reconcile --apply --complete %d:<hash>\n", groupID)
+			fancy.Fwarnf(stderr, "  Otherwise (nonce still free) --apply here will mark the recorded txs dropped and the pipeline will retry at the current chain nonce.\n")
 			bad = true
 			if apply {
 				for _, tx := range groupPending {
@@ -307,4 +317,51 @@ func reconcilePayer(
 	}
 
 	return bad, nil
+}
+
+// groupHeader returns a one-line header identifying a payout group and the
+// on-chain identifiers needed to look up its tx(s).
+func groupHeader(groupID int64, groupPending []*pipelinedb.Transaction) string {
+	if len(groupPending) == 0 {
+		return fmt.Sprintf("payout-group %d:", groupID)
+	}
+	sample := groupPending[0]
+	return fmt.Sprintf("payout-group %d (spender=%s owner=%s nonce=%d):",
+		groupID, sample.Spender.String(), sample.Owner.String(), sample.Nonce)
+}
+
+// writePayoutDetails prints the expected payee(s) and amounts for a payout
+// group so the operator can cross-check a candidate on-chain tx.
+func writePayoutDetails(ctx context.Context, w io.Writer, db *pipelinedb.DB, groupID int64, groupPending []*pipelinedb.Transaction, indent string) {
+	payouts, err := db.FetchPayoutGroupPayouts(ctx, groupID)
+	if err != nil {
+		fancy.Ferrorf(w, "%sfailed to fetch payouts for group %d: %v\n", indent, groupID, err)
+		return
+	}
+	var totalUSD decimal.Decimal
+	for _, p := range payouts {
+		totalUSD = totalUSD.Add(p.USD)
+	}
+	// Total STORJ tokens for the group: same on all recorded tx rows (they
+	// are re-submissions of the same payout), so any pending row will do.
+	var storjTokens string
+	if len(groupPending) > 0 && groupPending[0].StorjTokens != nil {
+		storjTokens = groupPending[0].StorjTokens.String()
+	}
+	fancy.Fprintf(w, fancy.Info, "%sexpected transfer: %d payee(s), total USD=%s, storj_tokens=%s\n",
+		indent, len(payouts), totalUSD.String(), storjTokens)
+	for _, p := range payouts {
+		fancy.Fprintf(w, fancy.Info, "%s  payee=%s usd=%s\n", indent, p.Payee.String(), p.USD.String())
+	}
+}
+
+// writeRecordedHashes prints the DB-recorded (now dropped) tx hashes.
+func writeRecordedHashes(w io.Writer, txs []*pipelinedb.Transaction, indent string) {
+	if len(txs) == 0 {
+		return
+	}
+	fancy.Fprintf(w, fancy.Info, "%srecorded hashes (all dropped on chain):\n", indent)
+	for _, tx := range txs {
+		fancy.Fprintf(w, fancy.Info, "%s  %s\n", indent, tx.Hash)
+	}
 }
