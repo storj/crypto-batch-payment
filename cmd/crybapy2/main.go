@@ -23,6 +23,7 @@ func run() error {
 	ok, err := clingy.Environment{}.Run(ctx, func(cmds clingy.Commands) {
 		cmds.New("audit", "Audits payouts", new(cmdAudit))
 		cmds.New("init", "Initializes payouts from prepayment CSVs", new(cmdInit))
+		cmds.New("reconcile", "Reconciles pending DB tx state against the chain", new(cmdReconcile))
 		cmds.New("run", "Runs the payouts pipeline", new(cmdRun))
 	})
 	if err != nil {

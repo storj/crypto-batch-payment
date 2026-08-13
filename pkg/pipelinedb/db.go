@@ -422,6 +422,31 @@ func (db *DB) UpdateTransactionState(ctx context.Context, hash string, state TxS
 	)
 }
 
+// MarkPayoutGroupComplete atomically records that a payout group has been
+// completed by finalTxHash, marking each of droppedHashes as dropped and
+// setting the payout group's final tx hash and status to complete. Use it
+// when the confirming transaction is external to the tx table (e.g. an
+// operator-supplied hash found on chain that was never persisted).
+func (db *DB) MarkPayoutGroupComplete(ctx context.Context, payoutGroupID int64, finalTxHash string, droppedHashes []string) error {
+	return db.db.WithTx(ctx, func(tx *payoutdb.Tx) error {
+		for _, hash := range droppedHashes {
+			if err := tx.UpdateNoReturn_Transaction_By_Hash(ctx,
+				payoutdb.Transaction_Hash(hash),
+				payoutdb.Transaction_Update_Fields{
+					State: payoutdb.Transaction_State(string(TxDropped)),
+				}); err != nil {
+				return errs.Wrap(err)
+			}
+		}
+		return errs.Wrap(tx.UpdateNoReturn_PayoutGroup_By_Id(ctx,
+			payoutdb.PayoutGroup_Id(payoutGroupID),
+			payoutdb.PayoutGroup_Update_Fields{
+				FinalTxHash: payoutdb.PayoutGroup_FinalTxHash(finalTxHash),
+				Status:      payoutdb.PayoutGroup_Status(string(PayoutGroupComplete)),
+			}))
+	})
+}
+
 func (db *DB) FetchPayoutGroup(ctx context.Context, id int64) (*PayoutGroup, error) {
 	row, err := db.db.Find_PayoutGroup_By_Id(ctx, payoutdb.PayoutGroup_Id(id))
 	if err != nil {
