@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/zeebo/errs"
+	"go.uber.org/zap"
 
 	"storj.io/crypto-batch-payment/pkg/eth"
 )
@@ -26,7 +27,7 @@ type Eth struct {
 	ExtraGasTip          *eth.Unit       `toml:"extra_gas_tip"`
 }
 
-func (c *Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
+func (c *Eth) NewPayer(ctx context.Context, log *zap.Logger) (_ Payer, err error) {
 	// Check for required parameters
 	if c.NodeAddress == "" {
 		return nil, errors.New("node_address is not configured")
@@ -49,7 +50,7 @@ func (c *Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
 		owner = *c.Owner
 	}
 
-	client, err := c.NewClient()
+	client, err := c.NewClient(ctx, log)
 	if err != nil {
 		return nil, err
 	}
@@ -85,21 +86,21 @@ func (c *Eth) NewPayer(ctx context.Context) (_ Payer, err error) {
 	}, nil
 }
 
-func (c *Eth) NewAuditor(ctx context.Context) (_ Auditor, err error) {
+func (c *Eth) NewAuditor(ctx context.Context, log *zap.Logger) (_ Auditor, err error) {
 	// Check for required parameters
 	if c.NodeAddress == "" {
 		return nil, errors.New("node_address is not configured")
 	}
 
-	ethAuditor, err := eth.NewAuditor(c.NodeAddress)
+	ethAuditor, err := eth.NewAuditor(ctx, c.NodeAddress, log)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
 	return ethAuditor, nil
 }
 
-func (c *Eth) NewClient() (*ethclient.Client, error) {
-	client, err := ethclient.Dial(c.NodeAddress)
+func (c *Eth) NewClient(ctx context.Context, log *zap.Logger) (*ethclient.Client, error) {
+	client, err := eth.Dial(ctx, c.NodeAddress, log)
 	return client, errs.Wrap(err)
 }
 

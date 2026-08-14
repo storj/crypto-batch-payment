@@ -47,7 +47,7 @@ func Audit(ctx context.Context, dir string, csvPath string, payerType payer.Type
 			return nil, errs.New("Failed to dial node %q: %v\n", nodeAddress, err)
 		}
 		defer client.Close()
-		auditor, err = eth.NewAuditor(nodeAddress)
+		auditor, err = eth.NewAuditor(ctx, nodeAddress, nil)
 		if err != nil {
 			return nil, err
 		}

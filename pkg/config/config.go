@@ -10,6 +10,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/shopspring/decimal"
+	"go.uber.org/zap"
 
 	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
 	"storj.io/crypto-batch-payment/pkg/eth"
@@ -26,7 +27,10 @@ type Config struct {
 	ZkSyncEra     *ZkSyncEra    `toml:"zksync-era"`
 }
 
-func (c *Config) NewPayers(ctx context.Context) (_ Payers, err error) {
+func (c *Config) NewPayers(ctx context.Context, log *zap.Logger) (_ Payers, err error) {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	var payers Payers
 	defer func() {
 		if err != nil {
@@ -35,7 +39,7 @@ func (c *Config) NewPayers(ctx context.Context) (_ Payers, err error) {
 	}()
 
 	if c.Eth != nil {
-		p, err := c.Eth.NewPayer(ctx)
+		p, err := c.Eth.NewPayer(ctx, log)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init eth payer: %w", err)
 		}
@@ -43,7 +47,7 @@ func (c *Config) NewPayers(ctx context.Context) (_ Payers, err error) {
 	}
 
 	if c.ZkSyncEra != nil {
-		p, err := c.ZkSyncEra.NewPayer(ctx)
+		p, err := c.ZkSyncEra.NewPayer(ctx, log)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init zksync-era payer: %w", err)
 		}
@@ -53,7 +57,10 @@ func (c *Config) NewPayers(ctx context.Context) (_ Payers, err error) {
 	return payers, nil
 }
 
-func (c *Config) NewAuditors(ctx context.Context) (_ Auditors, err error) {
+func (c *Config) NewAuditors(ctx context.Context, log *zap.Logger) (_ Auditors, err error) {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	var auditors Auditors
 	defer func() {
 		if err != nil {
@@ -62,7 +69,7 @@ func (c *Config) NewAuditors(ctx context.Context) (_ Auditors, err error) {
 	}()
 
 	if c.Eth != nil {
-		p, err := c.Eth.NewAuditor(ctx)
+		p, err := c.Eth.NewAuditor(ctx, log)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init eth auditor: %w", err)
 		}
@@ -70,7 +77,7 @@ func (c *Config) NewAuditors(ctx context.Context) (_ Auditors, err error) {
 	}
 
 	if c.ZkSyncEra != nil {
-		p, err := c.ZkSyncEra.NewAuditor(ctx)
+		p, err := c.ZkSyncEra.NewAuditor(ctx, log)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init zksync-era auditor: %w", err)
 		}

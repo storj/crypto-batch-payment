@@ -52,7 +52,12 @@ func (cmd *cmdRun) Execute(ctx context.Context) error {
 		return fmt.Errorf("unable to init coin market cap quoter: %w", err)
 	}
 
-	payers, err := cfg.NewPayers(ctx)
+	log, err := openLog(".")
+	if err != nil {
+		return fmt.Errorf("failed to open log: %w", err)
+	}
+
+	payers, err := cfg.NewPayers(ctx, log)
 	if err != nil {
 		return fmt.Errorf("failed to init payers: %w", err)
 	}
@@ -85,11 +90,6 @@ func (cmd *cmdRun) Execute(ctx context.Context) error {
 		}
 
 		runs = append(runs, payoutRun{db: db, payer: payer})
-	}
-
-	log, err := openLog(".")
-	if err != nil {
-		return fmt.Errorf("failed to open log: %w", err)
 	}
 
 	promptConfirm := promptConfirm

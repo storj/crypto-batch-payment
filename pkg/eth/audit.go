@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/zeebo/errs"
+	"go.uber.org/zap"
 
 	"github.com/ethereum/go-ethereum/ethclient"
 
@@ -21,8 +22,8 @@ type Auditor struct {
 	client *ethclient.Client
 }
 
-func NewAuditor(nodeAddress string) (*Auditor, error) {
-	client, err := ethclient.Dial(nodeAddress)
+func NewAuditor(ctx context.Context, nodeAddress string, log *zap.Logger) (*Auditor, error) {
+	client, err := Dial(ctx, nodeAddress, log)
 	if err != nil {
 		return nil, errs.New("Failed to dial node %q: %v\n", nodeAddress, err)
 	}

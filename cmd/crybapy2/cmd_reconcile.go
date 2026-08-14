@@ -59,7 +59,7 @@ func (cmd *cmdReconcile) Execute(ctx context.Context) error {
 		return fmt.Errorf("unable to load config: %w", err)
 	}
 
-	auditors, err := cfg.NewAuditors(ctx)
+	auditors, err := cfg.NewAuditors(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to init auditors: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
+	"go.uber.org/zap"
 
 	"storj.io/crypto-batch-payment/pkg/zksyncera"
 )
@@ -22,7 +23,7 @@ type ZkSyncEra struct {
 	PaymasterPayload     HexString       `toml:"paymaster_payload"`
 }
 
-func (c ZkSyncEra) NewPayer(ctx context.Context) (_ Payer, err error) {
+func (c ZkSyncEra) NewPayer(ctx context.Context, _ *zap.Logger) (_ Payer, err error) {
 	// Check for required parameters
 	if c.NodeAddress == "" {
 		return nil, errors.New("node_address is not configured")
@@ -57,7 +58,7 @@ func (c ZkSyncEra) NewPayer(ctx context.Context) (_ Payer, err error) {
 	}, nil
 }
 
-func (c ZkSyncEra) NewAuditor(ctx context.Context) (_ Auditor, err error) {
+func (c ZkSyncEra) NewAuditor(ctx context.Context, _ *zap.Logger) (_ Auditor, err error) {
 	auditor, err := zksyncera.NewAuditor(c.NodeAddress)
 	if err != nil {
 		return nil, err
