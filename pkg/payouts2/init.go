@@ -28,7 +28,7 @@ func Init(ctx context.Context, params InitParams, ui InitUI) error {
 		return errors.New("prepayout CSVs are required to initialize payouts")
 	}
 
-	byType, err := loadCSVs(params.CSVPaths, params.BonusMultiplier, params.ZksyncEraMultiplier, ui)
+	byType, err := loadCSVs(params.CSVPaths, params.ZksyncEraMultiplier, ui)
 	if err != nil {
 		return err
 	}
@@ -42,7 +42,7 @@ func Init(ctx context.Context, params InitParams, ui InitUI) error {
 	return nil
 }
 
-func loadCSVs(csvPaths []string, bonusMultiplier, zksyncEraMultiplier decimal.Decimal, ui InitUI) (ByType, error) {
+func loadCSVs(csvPaths []string, zksyncEraMultiplier decimal.Decimal, ui InitUI) (ByType, error) {
 	ui.Started(StartedEvent{CSVPaths: csvPaths})
 
 	aggregation := new(payoutAggregation)
@@ -75,9 +75,6 @@ func loadCSVs(csvPaths []string, bonusMultiplier, zksyncEraMultiplier decimal.De
 			}
 
 			amount := prepayoutRow.Amount
-			if prepayoutRow.Bonus {
-				amount = amount.Mul(bonusMultiplier)
-			}
 			if typ == payer.ZkSyncEra {
 				amount = amount.Mul(zksyncEraMultiplier)
 			}

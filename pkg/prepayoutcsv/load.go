@@ -14,7 +14,11 @@ import (
 )
 
 const (
-	expectHeader = "address,amount,address-kind,mandatory,sanctioned,bonus"
+	expectHeader = "address,amount,address-kind,mandatory,sanctioned"
+
+	// The "bonus" column is legacy. It is accepted for backwards compatibility
+	// with older CSVs but its value is ignored.
+	expectHeaderWithBonus = expectHeader + ",bonus"
 )
 
 type Row struct {
@@ -37,9 +41,6 @@ type Row struct {
 	// Sanctioned is whether or not the payee is sanctioned. These rows are
 	// skipped when issuing payouts.
 	Sanctioned bool `csv:"sanctioned"`
-
-	// Bonus indicates whether or not this payee qualifies for a bonus.
-	Bonus bool `csv:"bonus"`
 }
 
 func Load(path string) ([]Row, error) {
@@ -61,7 +62,10 @@ func Parse(csvBytes []byte) ([]Row, error) {
 		return nil, errs.Wrap(err)
 	}
 
-	const expectFields = 6
+	const (
+		expectFields          = 5
+		expectFieldsWithBonus = 6
+	)
 
 	inHeader := true
 	var rows []Row
@@ -77,15 +81,15 @@ func Parse(csvBytes []byte) ([]Row, error) {
 		if inHeader {
 			inHeader = false
 			header := strings.Join(record, ",")
-			if header != expectHeader {
-				return nil, errs.New("record on line %d: invalid header %q: expected %q", line, header, expectHeader)
+			if header != expectHeader && header != expectHeaderWithBonus {
+				return nil, errs.New(`record on line %d: invalid header %q: expected %q with an optional trailing "bonus" column`, line, header, expectHeader)
 			}
 			continue
 		}
 
 		// wrong number of fields
-		if len(record) != expectFields {
-			return nil, errs.New("record on line %d: expected %d fields but got %d", line, expectFields, len(record))
+		if len(record) != expectFields && len(record) != expectFieldsWithBonus {
+			return nil, errs.New("record on line %d: expected %d or %d fields but got %d", line, expectFields, expectFieldsWithBonus, len(record))
 		}
 
 		var (
@@ -94,7 +98,7 @@ func Parse(csvBytes []byte) ([]Row, error) {
 			kindValue       = record[2]
 			mandatoryValue  = record[3]
 			sanctionedValue = record[4]
-			bonusValue      = record[5]
+			// record[5], the legacy "bonus" column, is ignored if present.
 		)
 
 		// The address field is sometimes empty in the prepayouts CSVs. They
@@ -128,11 +132,6 @@ func Parse(csvBytes []byte) ([]Row, error) {
 			return nil, errs.New(`record on line %d: invalid boolean value %q for "sanctioned" column`, line, sanctionedValue)
 		}
 
-		bonus, err := strconv.ParseBool(bonusValue)
-		if err != nil {
-			return nil, errs.New(`record on line %d: invalid boolean value %q for "bonus" column`, line, bonusValue)
-		}
-
 		rows = append(rows, Row{
 			Line:       line,
 			Address:    address,
@@ -140,7 +139,6 @@ func Parse(csvBytes []byte) ([]Row, error) {
 			Kind:       kindValue,
 			Mandatory:  mandatory,
 			Sanctioned: sanctioned,
-			Bonus:      bonus,
 		})
 	}
 

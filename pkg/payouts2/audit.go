@@ -50,15 +50,16 @@ func AuditDBs(ctx context.Context, dbs map[payer.Type]*pipelinedb.DB, csvPaths [
 		return nil, errors.New("no databases to audit; have you run 'init'?")
 	}
 
-	// Make sure each database has the same bonus multipler applied.
-	bonusMultiplier, err := auditBonusMultiplier(ctx, maps.Values(dbs))
-	if err != nil {
+	// Make sure each database has the same bonus multipler recorded. The
+	// multiplier is no longer applied to any payout since the CSV "bonus"
+	// column is ignored, but the databases should still agree.
+	if _, err := auditBonusMultiplier(ctx, maps.Values(dbs)); err != nil {
 		sink.ReportErrorf("Invalid bonus multipler: %v", err)
 	}
 
 	zksyncEraMultiplier := decimal.RequireFromString("1.03")
 
-	csvPayoutsByType, err := loadCSVs(csvPaths, bonusMultiplier, zksyncEraMultiplier, &auditUI{sink: sink})
+	csvPayoutsByType, err := loadCSVs(csvPaths, zksyncEraMultiplier, &auditUI{sink: sink})
 	if err != nil {
 		return nil, err
 	}
