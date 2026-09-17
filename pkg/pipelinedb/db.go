@@ -303,6 +303,27 @@ func (db *DB) CountUnfinishedUnattachedPayoutGroup(ctx context.Context) (int64, 
 	return count, nil
 }
 
+// CountUnfinishedPayoutGroup returns the number of payout groups that still
+// need to be paid out, including the ones that already have a transaction in
+// flight.
+func (db *DB) CountUnfinishedPayoutGroup(ctx context.Context) (int64, error) {
+	count, err := db.db.CountUnfinishedPayoutGroup(ctx)
+	if err != nil {
+		return 0, errs.Wrap(err)
+	}
+	return count, nil
+}
+
+// FetchUnfinishedPayouts returns the payouts belonging to payout groups that
+// still need to be paid out.
+func (db *DB) FetchUnfinishedPayouts(ctx context.Context) ([]*Payout, error) {
+	rows, err := db.db.AllUnfinishedPayout(ctx)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+	return PayoutsFromRows(rows)
+}
+
 func (db *DB) FetchFirstUnfinishedUnattachedPayoutGroup(ctx context.Context) (*PayoutGroup, error) {
 	row, err := db.db.FirstUnfinishedUnattachedPayoutGroup(ctx)
 	if err != nil {
@@ -496,6 +517,8 @@ type DBStats struct {
 	PendingPayoutsBelowThresholdUSD decimal.Decimal
 	TotalPayoutGroups               int64
 	PendingPayoutGroups             int64
+	UnstartedPayoutGroups           int64
+	InFlightPayoutGroups            int64
 	SkippedPayoutGroups             int64
 	TotalTransactions               int64
 	PendingTransactions             int64
@@ -530,11 +553,11 @@ func (db *DB) Stats(ctx context.Context, payoutThresholdUSD decimal.Decimal) (_ 
 	////////////////////////////////////////////////
 	// Tally pending payouts
 	////////////////////////////////////////////////
-	payoutRows, err = db.db.All_Payout_By_PayoutGroup_Status(ctx, payoutdb.PayoutGroup_Status_Null())
-	if err != nil {
-		return nil, errs.Wrap(err)
-	}
-	payouts, err = PayoutsFromRows(payoutRows)
+	// Pending means "not paid out yet", which is not the same as "never
+	// attempted": a payout group whose transaction was dropped or failed has a
+	// cleared (i.e. empty, not NULL) status but is still owed to the payee and
+	// will be picked up again by the pipeline.
+	payouts, err = db.FetchUnfinishedPayouts(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -553,10 +576,19 @@ func (db *DB) Stats(ctx context.Context, payoutThresholdUSD decimal.Decimal) (_ 
 		return nil, errs.Wrap(err)
 	}
 
-	stats.PendingPayoutGroups, err = db.db.Count_PayoutGroup_By_Status(ctx, payoutdb.PayoutGroup_Status_Null())
+	stats.PendingPayoutGroups, err = db.CountUnfinishedPayoutGroup(ctx)
 	if err != nil {
-		return nil, errs.Wrap(err)
+		return nil, err
 	}
+
+	// The unstarted groups are the ones the pipeline will immediately start
+	// sending transactions for; the rest of the pending groups already have a
+	// transaction in flight.
+	stats.UnstartedPayoutGroups, err = db.CountUnfinishedUnattachedPayoutGroup(ctx)
+	if err != nil {
+		return nil, err
+	}
+	stats.InFlightPayoutGroups = stats.PendingPayoutGroups - stats.UnstartedPayoutGroups
 
 	stats.SkippedPayoutGroups, err = db.db.Count_PayoutGroup_By_Status(ctx, payoutdb.PayoutGroup_Status(string(PayoutGroupSkipped)))
 	if err != nil {

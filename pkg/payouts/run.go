@@ -102,6 +102,11 @@ func Preview(ctx context.Context, config Config, db *pipelinedb.DB, paymentPayer
 		storjPending = storjtoken.FromUSD(stats.PendingUSD, storjQuote.Price, decimals)
 
 		ethBalanceETH = decimal.NewFromBigInt(ethBalance, -18)
+
+		// The pipeline refuses to send a transaction it cannot cover, so point
+		// out up front when the balance is not enough for what is left to pay.
+		tokenBalanceShort = tokenBalance.Cmp(storjPending) < 0
+		ethBalanceShort   = ethBalanceETH.Cmp(pendingFeesUSD.Div(ethQuote.Price)) < 0
 	)
 
 	fancy.Infof("**PAYMENT TYPE**............................: %s\n", paymentPayer)
@@ -137,13 +142,15 @@ func Preview(ctx context.Context, config Config, db *pipelinedb.DB, paymentPayer
 	fancy.Infof("Total Fees in ETH...........................: %s\n", totalFeesUSD.Div(ethQuote.Price))
 	fancy.Infof("Pending Fees in ETH.........................: %s\n", pendingFeesUSD.Div(ethQuote.Price))
 	fancy.Infof("Pending After Skips Fees in ETH.............: %s\n", pendingAfterSkippingFeesUSD.Div(ethQuote.Price))
-	fancy.Infof("Current ETH balance ........................: %s\n", ethBalanceETH)
+	infoOrWarnf(ethBalanceShort, "Current ETH balance ........................: %s\n", ethBalanceETH)
 	fmt.Println()
 	fancy.Infof("Total in STORJ ~ ...........................: %s\n", storjtoken.Pretty(storjTotal, decimals))
 	fancy.Infof("Pending in STORJ ~ .........................: %s\n", storjtoken.Pretty(storjPending, decimals))
-	fancy.Infof("Current STORJ balance ......................: %s\n", storjtoken.Pretty(tokenBalance, decimals))
+	infoOrWarnf(tokenBalanceShort, "Current STORJ balance ......................: %s\n", storjtoken.Pretty(tokenBalance, decimals))
 	fmt.Println()
 	fancy.Infof("Pending Payout Groups.......................: %d\n", stats.PendingPayoutGroups)
+	fancy.Infof("  Unstarted (no tx yet).....................: %d\n", stats.UnstartedPayoutGroups)
+	fancy.Infof("  In-Flight (tx pending)....................: %d\n", stats.InFlightPayoutGroups)
 	fancy.Infof("Skipped Payout Groups.......................: %d\n", stats.SkippedPayoutGroups)
 	fancy.Infof("Total Payout Groups.........................: %d\n", stats.TotalPayoutGroups)
 	fmt.Println()
