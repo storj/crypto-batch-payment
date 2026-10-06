@@ -39,7 +39,7 @@ func newPayerTransferCommand(parentConfig *payerCommandConfig) *cobra.Command {
 		&config.Price,
 		"price", "",
 		"0",
-		"Actual price of the STORJ token to be used.")
+		"Actual price of the token to be used.")
 	cmd.Flags().StringVarP(
 		&config.Amount,
 		"amount", "",

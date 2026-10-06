@@ -41,6 +41,6 @@ func doPayerBalance(config *payerBalanceConfig, spenderKeyPath string) error {
 		return err
 	}
 
-	fmt.Println(printToken(balance, payer.Decimals(), ""))
+	fmt.Println(printToken(balance, payer.Decimals(), payer.Symbol()))
 	return nil
 }

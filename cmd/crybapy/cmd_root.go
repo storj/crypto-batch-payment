@@ -29,7 +29,7 @@ func newRootCommand() *cobra.Command {
 	config := new(rootConfig)
 	cmd := &cobra.Command{
 		Use:   "payouts",
-		Short: "Manage and execute STORJ Token payouts",
+		Short: "Manage and execute ERC-20 token payouts",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
 			config.Ctx = cmdCtx()
 			return nil

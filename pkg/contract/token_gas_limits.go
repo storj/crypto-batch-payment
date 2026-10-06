@@ -2,6 +2,6 @@ package contract
 
 const (
 	TokenDeployGasLimit       = 1200000
-	TokenTransferGasLimit     = 70000
-	TokenTransferFromGasLimit = 70000
+	TokenTransferGasLimit     = 100000
+	TokenTransferFromGasLimit = 100000
 )

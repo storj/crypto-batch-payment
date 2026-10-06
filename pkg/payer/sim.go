@@ -51,6 +51,10 @@ func (s *SimPayer) Decimals() int32 {
 	return 8
 }
 
+func (s *SimPayer) Symbol() string {
+	return "STORJ"
+}
+
 func (s *SimPayer) NextNonce(ctx context.Context) (uint64, error) {
 	return uint64(0), nil
 }

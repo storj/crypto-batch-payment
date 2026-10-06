@@ -41,6 +41,7 @@ type Payer struct {
 	contractAddress  common.Address
 	erc20abi         abi.ABI
 	decimals         int32
+	symbol           string
 	paymasterAddress *common.Address
 	paymasterPayload []byte
 }
@@ -84,7 +85,7 @@ func NewPayer(
 		paymasterAddress: paymasterAddress,
 		paymasterPayload: paymasterPayload,
 	}
-	p.decimals, err = p.getTokenDecimals(context.Background())
+	p.decimals, p.symbol, err = p.getTokenInfo(context.Background())
 	return p, errs.Wrap(err)
 }
 
@@ -98,6 +99,10 @@ func (p *Payer) ChainID() int {
 
 func (p *Payer) Decimals() int32 {
 	return p.decimals
+}
+
+func (p *Payer) Symbol() string {
+	return p.symbol
 }
 
 func (p *Payer) NextNonce(ctx context.Context) (uint64, error) {
@@ -278,16 +283,20 @@ func (p *Payer) PrintEstimate(ctx context.Context, remaining int64) error {
 	return nil
 }
 
-func (p *Payer) getTokenDecimals(ctx context.Context) (int32, error) {
+func (p *Payer) getTokenInfo(ctx context.Context) (int32, string, error) {
 	tokenContract, err := contract.NewToken(p.contractAddress, p.zk)
 	if err != nil {
-		return 0, fmt.Errorf("failed to load ERC20: %w", err)
+		return 0, "", fmt.Errorf("failed to load ERC20: %w", err)
 	}
-	decimals, err := tokenContract.Decimals(&bind.CallOpts{})
+	decimals, err := tokenContract.Decimals(&bind.CallOpts{Context: ctx})
 	if err != nil {
-		return 0, fmt.Errorf("failed to load ERC20: %w", err)
+		return 0, "", fmt.Errorf("failed to load ERC20 decimals: %w", err)
 	}
-	return int32(decimals.Int64()), nil
+	symbol, err := tokenContract.Symbol(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to load ERC20 symbol: %w", err)
+	}
+	return int32(decimals.Int64()), symbol, nil
 }
 
 func (p *Payer) getFeeEstimate(ctx context.Context, data []byte) (*zktypes.Fee, error) {

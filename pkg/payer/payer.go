@@ -64,6 +64,9 @@ type Payer interface {
 	// Decimals returns with the decimal precision of the token.
 	Decimals() int32
 
+	// Symbol returns with the symbol of the token (e.g. STORJ, USDC).
+	Symbol() string
+
 	// NextNonce queries chain for the next available nonce value.
 	NextNonce(ctx context.Context) (uint64, error)
 

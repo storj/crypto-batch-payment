@@ -298,7 +298,7 @@ func reconcilePayer(
 			writeRecordedHashes(stderr, groupPending, "  ")
 			fancy.Fwarnf(stderr, "  If nonce %d is used on chain (spender's next nonce > %d), find the confirming tx from %s at nonce %d\n",
 				nonce, nonce, spender, nonce)
-			fancy.Fwarnf(stderr, "  and verify its Transfer log matches the payee(s) and STORJ token amount(s) above. Then:\n")
+			fancy.Fwarnf(stderr, "  and verify its Transfer log matches the payee(s) and token amount(s) above. Then:\n")
 			fancy.Fwarnf(stderr, "      crybapy2 reconcile --apply --complete %d:<hash>\n", groupID)
 			fancy.Fwarnf(stderr, "  Otherwise (nonce still free) --apply here will mark the recorded txs dropped and the pipeline will retry at the current chain nonce.\n")
 			bad = true
@@ -342,14 +342,14 @@ func writePayoutDetails(ctx context.Context, w io.Writer, db *pipelinedb.DB, gro
 	for _, p := range payouts {
 		totalUSD = totalUSD.Add(p.USD)
 	}
-	// Total STORJ tokens for the group: same on all recorded tx rows (they
+	// Total tokens for the group: same on all recorded tx rows (they
 	// are re-submissions of the same payout), so any pending row will do.
-	var storjTokens string
+	var tokens string
 	if len(groupPending) > 0 && groupPending[0].StorjTokens != nil {
-		storjTokens = groupPending[0].StorjTokens.String()
+		tokens = groupPending[0].StorjTokens.String()
 	}
-	fancy.Fprintf(w, fancy.Info, "%sexpected transfer: %d payee(s), total USD=%s, storj_tokens=%s\n",
-		indent, len(payouts), totalUSD.String(), storjTokens)
+	fancy.Fprintf(w, fancy.Info, "%sexpected transfer: %d payee(s), total USD=%s, tokens=%s\n",
+		indent, len(payouts), totalUSD.String(), tokens)
 	for _, p := range payouts {
 		fancy.Fprintf(w, fancy.Info, "%s  payee=%s usd=%s\n", indent, p.Payee.String(), p.USD.String())
 	}

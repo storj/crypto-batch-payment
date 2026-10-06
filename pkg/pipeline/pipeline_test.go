@@ -115,6 +115,46 @@ func Test_TestIntermittentTxError(t *testing.T) {
 
 }
 
+func Test_TokenPrice(t *testing.T) {
+	for _, tc := range []struct {
+		symbol         string
+		decimals       int32
+		expectedPrice  string
+		expectedTokens int64
+	}{
+		// STORJ is priced by the quoter ($2), so $3 is 1.5 STORJ.
+		{symbol: "STORJ", decimals: 8, expectedPrice: "2", expectedTokens: 150_000_000},
+		// USDC is pinned to $1, regardless of the quoter, so $3 is 3 USDC.
+		{symbol: "USDC", decimals: 6, expectedPrice: "1", expectedTokens: 3_000_000},
+	} {
+		t.Run(tc.symbol, func(t *testing.T) {
+			ctx := context.Background()
+
+			db := createTestDB(ctx, t, []*pipelinedb.Payout{
+				{
+					Payee: common.HexToAddress("0x58408e92BD76B15b23531F5BA3a6253513748ecA"),
+					USD:   decimal.New(3, 0),
+				},
+			})
+			t.Cleanup(func() { assert.NoError(t, db.Close()) })
+
+			p, testPayer := createTestPipeline(ctx, t, db)
+			testPayer.symbol = tc.symbol
+			testPayer.decimals = tc.decimals
+
+			require.NoError(t, p.initPayout(ctx))
+			_, err := p.payoutStep(ctx)
+			require.NoError(t, err)
+
+			txs, err := db.FetchPayoutGroupTransactions(ctx, 0)
+			require.NoError(t, err)
+			require.Len(t, txs, 1)
+			require.Equal(t, tc.expectedPrice, txs[0].StorjPrice.String())
+			require.Equal(t, big.NewInt(tc.expectedTokens), txs[0].StorjTokens)
+		})
+	}
+}
+
 func statusFailsWith(noncesToFail ...int) func(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
 	return func(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
 		for _, i := range noncesToFail {
@@ -176,12 +216,16 @@ var _ payer.Payer = &TestPayer{}
 
 type TestPayer struct {
 	nextNonce              uint64
+	symbol                 string
+	decimals               int32
 	sendTransactionHandler func(ctx context.Context, tx payer.Transaction) error
 	checkNonceGroupHandler func(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error)
 }
 
 func NewTestPayer() *TestPayer {
 	return &TestPayer{
+		symbol:   "STORJ",
+		decimals: 8,
 		sendTransactionHandler: func(ctx context.Context, tx payer.Transaction) error {
 			return nil
 		},
@@ -200,7 +244,11 @@ func (t *TestPayer) ChainID() int {
 }
 
 func (t *TestPayer) Decimals() int32 {
-	return 8
+	return t.decimals
+}
+
+func (t *TestPayer) Symbol() string {
+	return t.symbol
 }
 
 func (t *TestPayer) NextNonce(ctx context.Context) (uint64, error) {

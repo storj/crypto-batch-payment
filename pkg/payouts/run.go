@@ -3,6 +3,7 @@ package payouts
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -47,7 +48,8 @@ func Preview(ctx context.Context, config Config, db *pipelinedb.DB, paymentPayer
 		return err
 	}
 
-	storjQuote, err := config.Quoter.GetQuote(ctx, coinmarketcap.STORJ)
+	symbol := paymentPayer.Symbol()
+	tokenPrice, err := storjtoken.GetPrice(ctx, config.Quoter, symbol)
 	if err != nil {
 		return err
 	}
@@ -98,20 +100,20 @@ func Preview(ctx context.Context, config Config, db *pipelinedb.DB, paymentPayer
 		willSkipPayouts    = stats.PendingPayoutsBelowThreshold > 0
 
 		decimals     = paymentPayer.Decimals()
-		storjTotal   = storjtoken.FromUSD(stats.TotalUSD, storjQuote.Price, decimals)
-		storjPending = storjtoken.FromUSD(stats.PendingUSD, storjQuote.Price, decimals)
+		tokenTotal   = storjtoken.FromUSD(stats.TotalUSD, tokenPrice, decimals)
+		tokenPending = storjtoken.FromUSD(stats.PendingUSD, tokenPrice, decimals)
 
 		ethBalanceETH = decimal.NewFromBigInt(ethBalance, -18)
 
 		// The pipeline refuses to send a transaction it cannot cover, so point
 		// out up front when the balance is not enough for what is left to pay.
-		tokenBalanceShort = tokenBalance.Cmp(storjPending) < 0
+		tokenBalanceShort = tokenBalance.Cmp(tokenPending) < 0
 		ethBalanceShort   = ethBalanceETH.Cmp(pendingFeesUSD.Div(ethQuote.Price)) < 0
 	)
 
 	fancy.Infof("**PAYMENT TYPE**............................: %s\n", paymentPayer)
 	fancy.Infof("Current ETH Price...........................: $%s\n", ethQuote.Price)
-	fancy.Infof("Current STORJ Price.........................: $%s\n", storjQuote.Price)
+	fancy.Infof("%s: $%s\n", dotted("Current "+symbol+" Price"), tokenPrice)
 	fancy.Infof("Estimated Per-Gas Fee Cap...................: %s (wei)\n", gasInfo.GasFeeCap)
 	fancy.Infof("Estimated Per-Gas Fee Tip...................: %s (wei)\n", gasInfo.GasTipCap)
 	infoOrWarnf(tolerationExceeded, "Max Fee Estimate............................: $%s (for %d gas)\n", maxFeeEstimateUSD.Truncate(5), gasInfo.GasLimit)
@@ -144,9 +146,9 @@ func Preview(ctx context.Context, config Config, db *pipelinedb.DB, paymentPayer
 	fancy.Infof("Pending After Skips Fees in ETH.............: %s\n", pendingAfterSkippingFeesUSD.Div(ethQuote.Price))
 	infoOrWarnf(ethBalanceShort, "Current ETH balance ........................: %s\n", ethBalanceETH)
 	fmt.Println()
-	fancy.Infof("Total in STORJ ~ ...........................: %s\n", storjtoken.Pretty(storjTotal, decimals))
-	fancy.Infof("Pending in STORJ ~ .........................: %s\n", storjtoken.Pretty(storjPending, decimals))
-	infoOrWarnf(tokenBalanceShort, "Current STORJ balance ......................: %s\n", storjtoken.Pretty(tokenBalance, decimals))
+	fancy.Infof("%s: %s\n", dotted("Total in "+symbol+" ~ "), storjtoken.Pretty(tokenTotal, decimals, symbol))
+	fancy.Infof("%s: %s\n", dotted("Pending in "+symbol+" ~ "), storjtoken.Pretty(tokenPending, decimals, symbol))
+	infoOrWarnf(tokenBalanceShort, "%s: %s\n", dotted("Current "+symbol+" balance "), storjtoken.Pretty(tokenBalance, decimals, symbol))
 	fmt.Println()
 	fancy.Infof("Pending Payout Groups.......................: %d\n", stats.PendingPayoutGroups)
 	fancy.Infof("  Unstarted (no tx yet).....................: %d\n", stats.UnstartedPayoutGroups)
@@ -199,6 +201,15 @@ func Run(ctx context.Context, log *zap.Logger, config Config, db *pipelinedb.DB,
 	}
 
 	return nil
+}
+
+// dotted pads the label with dots to align it with the other preview lines.
+func dotted(label string) string {
+	const width = 44
+	if len(label) >= width {
+		return label
+	}
+	return label + strings.Repeat(".", width-len(label))
 }
 
 func positiveOrDash(d decimal.Decimal) string {

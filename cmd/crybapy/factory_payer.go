@@ -37,7 +37,7 @@ func RegisterFlags(cmd *cobra.Command, config *PayerConfig) {
 		&config.ContractAddress,
 		"contract", "",
 		storjtoken.DefaultContractAddress.String(),
-		"Address of the STORJ contract on the network")
+		"Address of the ERC-20 token contract on the network (default is STORJ)")
 	cmd.Flags().StringVarP(
 		&config.PayerType,
 		"type", "",

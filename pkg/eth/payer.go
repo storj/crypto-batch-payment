@@ -56,6 +56,7 @@ type Payer struct {
 	signer        bind.SignerFn
 	from          common.Address
 	tokenDecimals int32
+	tokenSymbol   string
 	opts          PayerOptions
 }
 
@@ -83,6 +84,11 @@ func NewPayer(ctx context.Context,
 		return nil, errs.Wrap(err)
 	}
 
+	symbol, err := contract.Symbol(nil)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+
 	return &Payer{
 		owner:         owner,
 		chainID:       chainID,
@@ -91,6 +97,7 @@ func NewPayer(ctx context.Context,
 		signer:        transactor.Signer,
 		from:          transactor.From,
 		tokenDecimals: int32(decimals.Int64()),
+		tokenSymbol:   symbol,
 		opts:          opts,
 	}, nil
 }
@@ -105,6 +112,10 @@ func (e *Payer) ChainID() int {
 
 func (e *Payer) Decimals() int32 {
 	return e.tokenDecimals
+}
+
+func (e *Payer) Symbol() string {
+	return e.tokenSymbol
 }
 
 func (e *Payer) NextNonce(ctx context.Context) (uint64, error) {
@@ -183,23 +194,23 @@ func (e *Payer) CreateRawTransaction(ctx context.Context, log *zap.Logger, param
 			return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 		}
 	} else {
-		// Check the STORJ allowance to make sure there is enough. Since the
+		// Check the token allowance to make sure there is enough. Since the
 		// contract does not support pending operations, the best we can do
 		// is check the live balance.
-		storjAllowance, err := e.contract.Allowance(&bind.CallOpts{
+		tokenAllowance, err := e.contract.Allowance(&bind.CallOpts{
 			Pending: false,
 			Context: ctx,
 		}, e.owner, opts.From)
 		if err != nil {
 			return payer.Transaction{}, common.Address{}, errs.Wrap(err)
 		}
-		if storjAllowance.Cmp(params.Tokens) < 0 {
-			return payer.Transaction{}, common.Address{}, errs.Errorf("not enough STORJ allowance to cover transfer")
+		if tokenAllowance.Cmp(params.Tokens) < 0 {
+			return payer.Transaction{}, common.Address{}, errs.Errorf("not enough %s allowance to cover transfer", e.tokenSymbol)
 		}
 
 		log = log.With(
 			zap.Stringer("spender", opts.From),
-			zap.Stringer("spender-storj-allowance", storjAllowance),
+			zap.Stringer("spender-token-allowance", tokenAllowance),
 		)
 
 		rawTx, err = e.contract.TransferFrom(opts, e.owner, params.Payee, params.Tokens)
@@ -300,7 +311,7 @@ func (e *Payer) CheckNonceGroup(ctx context.Context, log *zap.Logger, nonceGroup
 	case pipelinedb.TxFailed:
 		// The transaction has failed. This should fail the pipeline since
 		// continuing could rack up gas costs trying to push transactions
-		// through when there isn't enough STORJ to cover the transfers.
+		// through when there isn't enough token to cover the transfers.
 		// The payout group will be picked up again when the pipeline is
 		// restarted after the operator has had a chance to rectify the
 		// situation.

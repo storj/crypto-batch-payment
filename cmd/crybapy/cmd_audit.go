@@ -86,7 +86,7 @@ func doAudit(config *auditConfig) error {
 	fmt.Printf("Mismatched..................: %d\n", stats.Mismatched)
 	if stats.DoublePays > 0 {
 		fmt.Println(aurora.Red(fmt.Sprintf("Double Pays.................: %d", stats.DoublePays)))
-		fmt.Println(aurora.Red(fmt.Sprintf("Double Pay Amount (raw STORJ value): %s", stats.DoublePayStorj.String())))
+		fmt.Println(aurora.Red(fmt.Sprintf("Double Pay Amount (raw token value): %s", stats.DoublePayStorj.String())))
 		bad = true
 	}
 

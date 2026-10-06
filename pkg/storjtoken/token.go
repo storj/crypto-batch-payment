@@ -1,13 +1,21 @@
-// Package storjtoken provides STORJ token related functionality
+// Package storjtoken provides ERC-20 payout token related functionality
+// (STORJ, USDC).
 package storjtoken
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/shopspring/decimal"
+	"github.com/zeebo/errs"
+
+	"storj.io/crypto-batch-payment/pkg/coinmarketcap"
 )
+
+// USDC is the symbol of the USDC stablecoin, which is always priced at $1.
+const USDC = "USDC"
 
 var (
 	// DefaultContractAddress is the address of the STORJ Token Contract
@@ -19,11 +27,24 @@ var (
 	DefaultChainID = big.NewInt(0x1)
 )
 
-// FromUSD converts from USD to STORJ WEI, at the given price (rounded down).
+// GetPrice returns the USD price of the token with the given symbol. USDC is
+// pinned to $1 without consulting the quoter.
+func GetPrice(ctx context.Context, quoter coinmarketcap.Quoter, symbol string) (decimal.Decimal, error) {
+	if symbol == USDC {
+		return decimal.NewFromInt(1), nil
+	}
+	quote, err := quoter.GetQuote(ctx, coinmarketcap.Symbol(symbol))
+	if err != nil {
+		return decimal.Decimal{}, errs.Wrap(err)
+	}
+	return quote.Price, nil
+}
+
+// FromUSD converts from USD to token WEI, at the given price (rounded down).
 func FromUSD(usd, price decimal.Decimal, decimals int32) *big.Int {
-	if decimals < 8 {
-		// this should never happen based on our knowledge. ETH STORJ token uses 8, Polygon uses 18
-		panic("Decimals (digits of token) is less then 8. We don't support such an ERC-20 token for safety reasons. Potential overpayment!!!")
+	if decimals < 6 {
+		// this should never happen based on our knowledge. ETH STORJ token uses 8, Polygon uses 18, USDC uses 6
+		panic("Decimals (digits of token) is less then 6. We don't support such an ERC-20 token for safety reasons. Potential overpayment!!!")
 	}
 	tokens, _ := usd.Shift(decimals).QuoRem(price, 0)
 	// The quotient should have an exponent of zero, since it has no fractional
@@ -32,6 +53,7 @@ func FromUSD(usd, price decimal.Decimal, decimals int32) *big.Int {
 	return tokens.Coefficient()
 }
 
-func Pretty(token *big.Int, digits int32) string {
-	return fmt.Sprintf("%s (%s STORJ)", token, decimal.NewFromBigInt(token, -digits).String())
+// Pretty formats the raw token amount together with its real value.
+func Pretty(token *big.Int, digits int32, symbol string) string {
+	return fmt.Sprintf("%s (%s %s)", token, decimal.NewFromBigInt(token, -digits).String(), symbol)
 }

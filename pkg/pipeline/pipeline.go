@@ -56,13 +56,13 @@ type Config struct {
 	// Log is the logger for logging pipeline progress
 	Log *zap.Logger
 
-	// Owner is the address of the account that the STORJ token will be paid
+	// Owner is the address of the account that the tokens will be paid
 	// from. In a Transfer-based flow, the Owner will match the address derived
 	// from the Spender key. In a TransferFrom-based flow, it will be a
 	// different account.
 	Owner common.Address
 
-	// Quoter is used to get price quotes for STORJ token
+	// Quoter is used to get price quotes for ETH and the payout token
 	Quoter coinmarketcap.Quoter
 
 	// ThresholdDivisor divides a payout amount to determine the fee threshold.
@@ -445,36 +445,37 @@ func (p *Pipeline) trySendTransaction(ctx context.Context, payoutGroupID int64, 
 	}
 	txLog = txLog.With(zap.Stringer("eth-price", ethPrice))
 
-	// Calculate how many STORJ tokens are required to cover the payout.
-	storjPrice, err := p.getQuote(ctx, coinmarketcap.STORJ)
+	// Calculate how many tokens are required to cover the payout.
+	symbol := p.payer.Symbol()
+	tokenPrice, err := storjtoken.GetPrice(ctx, p.quoter, symbol)
 	if err != nil {
 		return nil, err
 	}
-	txLog = txLog.With(zap.Stringer("storj-price", storjPrice))
+	txLog = txLog.With(zap.String("token-symbol", symbol), zap.Stringer("token-price", tokenPrice))
 
-	storjTokens := storjtoken.FromUSD(payout.USD, storjPrice, p.payer.Decimals())
-	txLog = txLog.With(zap.Stringer("storj-tokens", storjTokens))
+	tokens := storjtoken.FromUSD(payout.USD, tokenPrice, p.payer.Decimals())
+	txLog = txLog.With(zap.Stringer("tokens", tokens))
 
-	if storjTokens.Cmp(zero) <= 0 {
-		txLog.Error("STORJ token amount must be greater than zero")
-		return nil, errs.New("cannot transfer %s tokens for payout group %d: must be more than zero", storjTokens, payoutGroupID)
+	if tokens.Cmp(zero) <= 0 {
+		txLog.Error("Token amount must be greater than zero")
+		return nil, errs.New("cannot transfer %s tokens for payout group %d: must be more than zero", tokens, payoutGroupID)
 	}
 
-	// Check the STORJ balance to make sure there is enough.
-	storjBalance, err := p.payer.GetTokenBalance(ctx)
+	// Check the token balance to make sure there is enough.
+	tokenBalance, err := p.payer.GetTokenBalance(ctx)
 	if err != nil {
 		return nil, err
 	}
-	txLog = txLog.With(zap.Stringer("storj-balance", storjBalance))
+	txLog = txLog.With(zap.Stringer("token-balance", tokenBalance))
 
-	if storjBalance.Cmp(storjTokens) < 0 {
-		return nil, errs.New("not enough STORJ balance to cover transfer (%s < %s)", storjBalance, storjTokens)
+	if tokenBalance.Cmp(tokens) < 0 {
+		return nil, errs.New("not enough %s balance to cover transfer (%s < %s)", symbol, tokenBalance, tokens)
 	}
 
 	params := payer.TransactionParams{
 		Nonce:  nonce,
 		Payee:  payout.Payee,
-		Tokens: storjTokens,
+		Tokens: tokens,
 	}
 
 	rawTx, from, err := p.payer.CreateRawTransaction(ctx, txLog, params)
@@ -526,8 +527,8 @@ func (p *Pipeline) trySendTransaction(ctx context.Context, payoutGroupID int64, 
 			Nonce:         rawTx.Nonce,
 			Owner:         p.owner,
 			Spender:       from,
-			StorjPrice:    storjPrice,
-			StorjTokens:   storjTokens,
+			StorjPrice:    tokenPrice,
+			StorjTokens:   tokens,
 			Raw:           rawTxJSON,
 		})
 
@@ -542,11 +543,11 @@ func (p *Pipeline) trySendTransaction(ctx context.Context, payoutGroupID int64, 
 }
 
 func (p *Pipeline) getQuote(ctx context.Context, symbol coinmarketcap.Symbol) (decimal.Decimal, error) {
-	storjQuote, err := p.quoter.GetQuote(ctx, symbol)
+	quote, err := p.quoter.GetQuote(ctx, symbol)
 	if err != nil {
 		return decimal.Decimal{}, errs.Wrap(err)
 	}
-	return storjQuote.Price, nil
+	return quote.Price, nil
 }
 
 func sleepFor(ctx context.Context, d time.Duration) error {

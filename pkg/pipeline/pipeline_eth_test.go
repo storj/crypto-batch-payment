@@ -720,9 +720,9 @@ func TestPipelineTooSmallPayment(t *testing.T) {
 func TestPipelinePaymentBelowThreshold(t *testing.T) {
 	// The payout is for $1.00. With a threshold divisor of 4, the payout will
 	// be skipped if the transaction cost exceeds $0.25.
-	// Our fake transaction gas limit is 70000 gas. With a gas fee cap of 4
-	// GWEI (per gas), the most this transaction will cost is 280,000 GWEI
-	// (0.000280000 ETH). At $1000 ETH price, that comes to $0.28, which
+	// Our fake transaction gas limit is 100000 gas. With a gas fee cap of 4
+	// GWEI (per gas), the most this transaction will cost is 400,000 GWEI
+	// (0.000400000 ETH). At $1000 ETH price, that comes to $0.40, which
 	// exceeds the limit and marks the payout as "skipped".
 	gasFeeCap := eth.RequireParseUnit("4.000gwei")
 	gasTipCap := eth.RequireParseUnit("0.001gwei")
@@ -758,12 +758,12 @@ func TestPipelinePaymentBelowThreshold(t *testing.T) {
 }
 
 func TestPipelinePaymentExceedsMaxFeeToleration(t *testing.T) {
-	// The payout is for $1.00. Our fake transaction gas limit is 70000 gas.
+	// The payout is for $1.00. Our fake transaction gas limit is 100000 gas.
 	// With a gas fee cap of 4 GWEI (per gas), the most this transaction will
-	// cost is 280,000 GWEI (0.000280000 ETH). At $1000 ETH price, that comes
-	// to $0.28. We will set the max fee toleration at 25 cents and then the
-	// pipeline sleeps, drop the ETH price to $860 to drop the max fee below
-	// the toleration
+	// cost is 400,000 GWEI (0.000400000 ETH). At $1000 ETH price, that comes
+	// to $0.40. We will set the max fee toleration at 25 cents and then the
+	// pipeline sleeps, drop the ETH price to $600 to drop the max fee ($0.24)
+	// below the toleration
 	gasFeeCap := eth.RequireParseUnit("4.000gwei")
 	gasTipCap := eth.RequireParseUnit("0.001gwei")
 	maxFeeTolerationUSD := decimal.RequireFromString("0.25")
@@ -779,7 +779,7 @@ func TestPipelinePaymentExceedsMaxFeeToleration(t *testing.T) {
 	var slept bool
 	test.AfterSleep(func() {
 		slept = true
-		test.SetETHPrice("860")
+		test.SetETHPrice("600")
 	})
 
 	test.InitializePayoutGroups([]*pipelinedb.Payout{

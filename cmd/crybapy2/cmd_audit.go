@@ -133,7 +133,7 @@ func (cmd *cmdAudit) Execute(ctx context.Context) error {
 
 		if txStats.DoublePays > 0 {
 			fancy.Ferrorf(stdout, "Double Pays.................: %d\n", txStats.DoublePays)
-			fancy.Ferrorf(stdout, "Double Pay Amount (raw STORJ value): %s\n", &txStats.DoublePayStorj)
+			fancy.Ferrorf(stdout, "Double Pay Amount (raw token value): %s\n", &txStats.DoublePayStorj)
 			bad = true
 		}
 
