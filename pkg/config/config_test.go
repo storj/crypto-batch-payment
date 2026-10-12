@@ -97,3 +97,35 @@ func TestLoad_Overrides(t *testing.T) {
 func ptrOf[T any](t T) *T {
 	return &t
 }
+
+func TestParse_ThresholdAmount(t *testing.T) {
+	cfg, err := config.Parse([]byte(`
+[pipeline]
+threshold_amount = 2.5
+`))
+	require.NoError(t, err)
+	assert.Equal(t, decimal.RequireFromString("2.5"), cfg.Pipeline.ThresholdAmount)
+	assert.Zero(t, cfg.Pipeline.ThresholdDivisor, "threshold amount should replace the default divisor")
+
+	// Explicitly disabling the divisor is fine.
+	cfg, err = config.Parse([]byte(`
+[pipeline]
+threshold_divisor = 0
+threshold_amount = 2.5
+`))
+	require.NoError(t, err)
+	assert.Zero(t, cfg.Pipeline.ThresholdDivisor)
+
+	_, err = config.Parse([]byte(`
+[pipeline]
+threshold_divisor = 4
+threshold_amount = 2.5
+`))
+	require.EqualError(t, err, "threshold_divisor and threshold_amount cannot be used together")
+
+	_, err = config.Parse([]byte(`
+[pipeline]
+threshold_amount = -1
+`))
+	require.EqualError(t, err, "threshold_amount must not be negative")
+}

@@ -155,6 +155,77 @@ func Test_TokenPrice(t *testing.T) {
 	}
 }
 
+func Test_ThresholdAmount(t *testing.T) {
+	ctx := context.Background()
+
+	db := createTestDB(ctx, t, []*pipelinedb.Payout{
+		{
+			Payee: common.HexToAddress("0x58408e92BD76B15b23531F5BA3a6253513748ecA"),
+			USD:   decimal.RequireFromString("0.99"),
+		},
+		{
+			Payee: common.HexToAddress("0x69F195FC69072649183a0F7D5663c53EBD1cDeF0"),
+			USD:   decimal.New(1, 0),
+		},
+	})
+	t.Cleanup(func() { assert.NoError(t, db.Close()) })
+
+	// USDC payouts with a threshold amount do not need a quoter.
+	testPayer := NewTestPayer()
+	testPayer.symbol = "USDC"
+	testPayer.decimals = 6
+	p, err := New(testPayer, Config{
+		DB:                 db,
+		Log:                zaptest.NewLogger(t),
+		ThresholdAmountUSD: decimal.New(1, 0),
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, p.initPayout(ctx))
+	done, err := p.payoutStep(ctx)
+	require.NoError(t, err)
+	require.False(t, done)
+
+	// The payout below the threshold is skipped, the other one is paid.
+	status, err := db.FetchPayoutGroupStatus(ctx, 0)
+	require.NoError(t, err)
+	require.Equal(t, pipelinedb.PayoutGroupSkipped, status)
+	txs, err := db.FetchPayoutGroupTransactions(ctx, 0)
+	require.NoError(t, err)
+	require.Empty(t, txs)
+
+	assertPaymetGroupStatus(ctx, t, db, 1, pipelinedb.TxConfirmed)
+	txs, err = db.FetchPayoutGroupTransactions(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(1_000_000), txs[0].StorjTokens)
+}
+
+func Test_QuoterRequirement(t *testing.T) {
+	ctx := context.Background()
+	db := createTestDB(ctx, t, nil)
+	t.Cleanup(func() { assert.NoError(t, db.Close()) })
+
+	newPipeline := func(symbol string, cfg Config) error {
+		testPayer := NewTestPayer()
+		testPayer.symbol = symbol
+		cfg.DB = db
+		cfg.Log = zaptest.NewLogger(t)
+		_, err := New(testPayer, cfg)
+		return err
+	}
+
+	require.NoError(t, newPipeline("USDC", Config{}))
+	require.Error(t, newPipeline("STORJ", Config{}))
+	require.Error(t, newPipeline("USDC", Config{ThresholdDivisor: decimal.New(4, 0)}))
+	require.Error(t, newPipeline("USDC", Config{MaxFeeTolerationUSD: decimal.New(1, 0)}))
+
+	require.EqualError(t, newPipeline("STORJ", Config{
+		Quoter:             &StaticQuoter{value: decimal.New(1, 0)},
+		ThresholdDivisor:   decimal.New(4, 0),
+		ThresholdAmountUSD: decimal.New(1, 0),
+	}), "threshold divisor and threshold amount cannot be used together")
+}
+
 func statusFailsWith(noncesToFail ...int) func(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
 	return func(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error) {
 		for _, i := range noncesToFail {

@@ -47,11 +47,6 @@ func (cmd *cmdRun) Execute(ctx context.Context) error {
 		return fmt.Errorf("unable to load config: %w", err)
 	}
 
-	quoter, err := cfg.CoinMarketCap.NewQuoter()
-	if err != nil {
-		return fmt.Errorf("unable to init coin market cap quoter: %w", err)
-	}
-
 	log, err := openLog(".")
 	if err != nil {
 		return fmt.Errorf("failed to open log: %w", err)
@@ -101,14 +96,22 @@ func (cmd *cmdRun) Execute(ctx context.Context) error {
 	}
 
 	payoutsCfg := payouts.Config{
-		Quoter:              quoter,
 		PipelineLimit:       cfg.Pipeline.DepthLimit,
 		TxDelay:             time.Duration(cfg.Pipeline.TxDelay),
 		RetrySkipped:        cmd.retrySkipped,
 		Drain:               cmd.drain,
 		PromptConfirm:       promptConfirm,
 		ThresholdDivisor:    cfg.Pipeline.ThresholdDivisor,
+		ThresholdAmountUSD:  cfg.Pipeline.ThresholdAmount,
 		MaxFeeTolerationUSD: cfg.Pipeline.MaxFeeTolerationUSD,
+	}
+
+	// CoinMarketCap is only needed for non-USDC tokens or fee based limits.
+	if slices.ContainsFunc(runs, func(run payoutRun) bool { return payoutsCfg.NeedsQuoter(run.payer.Symbol()) }) {
+		payoutsCfg.Quoter, err = cfg.CoinMarketCap.NewQuoter()
+		if err != nil {
+			return fmt.Errorf("unable to init coin market cap quoter: %w", err)
+		}
 	}
 
 	for _, run := range runs {

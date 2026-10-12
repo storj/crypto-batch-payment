@@ -62,13 +62,19 @@ type Config struct {
 	// different account.
 	Owner common.Address
 
-	// Quoter is used to get price quotes for ETH and the payout token
+	// Quoter is used to get price quotes for ETH and the payout token. It is
+	// optional when NeedsQuoter reports that no quotes are required.
 	Quoter coinmarketcap.Quoter
 
 	// ThresholdDivisor divides a payout amount to determine the fee threshold.
 	// If a payout fee is larger than the fee threshold then the payout is
 	// skipped. If ThresholdDivisor <= 0, no payouts will be skipped.
 	ThresholdDivisor decimal.Decimal
+
+	// ThresholdAmountUSD is a fixed payout threshold, in USD. Payouts below
+	// it are skipped without consulting the quoter. It cannot be combined
+	// with ThresholdDivisor. If ThresholdAmountUSD <= 0, it is not enforced.
+	ThresholdAmountUSD decimal.Decimal
 
 	// MaxFeeTolerationUSD is the maximum fee to tolerate for a single
 	// transaction, in USD. If MaxFeeTolerationUSD <= zero, no maximum is
@@ -110,6 +116,7 @@ type Pipeline struct {
 	owner               common.Address
 	quoter              coinmarketcap.Quoter
 	thresholdDivisor    decimal.Decimal
+	thresholdAmountUSD  decimal.Decimal
 	maxFeeTolerationUSD decimal.Decimal
 	db                  *pipelinedb.DB
 	limit               int
@@ -127,8 +134,10 @@ func New(payer payer.Payer, config Config) (*Pipeline, error) {
 	switch {
 	case config.Log == nil:
 		return nil, errors.New("log is required")
-	case config.Quoter == nil:
-		return nil, errors.New("quoter is required")
+	case config.Quoter == nil && NeedsQuoter(payer.Symbol(), config.ThresholdDivisor, config.MaxFeeTolerationUSD):
+		return nil, errs.New("quoter is required for %s payouts, threshold divisor or max fee toleration", payer.Symbol())
+	case config.ThresholdDivisor.IsPositive() && config.ThresholdAmountUSD.IsPositive():
+		return nil, errors.New("threshold divisor and threshold amount cannot be used together")
 	case config.DB == nil:
 		return nil, errors.New("db is required")
 	}
@@ -147,6 +156,7 @@ func New(payer payer.Payer, config Config) (*Pipeline, error) {
 		owner:               config.Owner,
 		quoter:              config.Quoter,
 		thresholdDivisor:    config.ThresholdDivisor,
+		thresholdAmountUSD:  config.ThresholdAmountUSD,
 		maxFeeTolerationUSD: config.MaxFeeTolerationUSD,
 		db:                  config.DB,
 		limit:               config.Limit,
@@ -156,6 +166,14 @@ func New(payer payer.Payer, config Config) (*Pipeline, error) {
 		sleep:               config.sleep,
 		payer:               payer,
 	}, nil
+}
+
+// NeedsQuoter reports whether price quotes are required to pay out the
+// given token. Only the threshold divisor and the max fee toleration need the
+// ETH price, and USDC is pinned to $1, so USDC payouts without those can be
+// done without a quoter.
+func NeedsQuoter(symbol string, thresholdDivisor, maxFeeTolerationUSD decimal.Decimal) bool {
+	return symbol != storjtoken.USDC || thresholdDivisor.IsPositive() || maxFeeTolerationUSD.IsPositive()
 }
 
 func (p *Pipeline) ProcessPayouts(ctx context.Context) error {
@@ -439,11 +457,21 @@ func (p *Pipeline) trySendTransaction(ctx context.Context, payoutGroupID int64, 
 
 	txLog = txLog.With(zap.Stringer("usd", payout.USD))
 
-	ethPrice, err := p.getQuote(ctx, coinmarketcap.ETH)
-	if err != nil {
-		return nil, err
+	if p.thresholdAmountUSD.IsPositive() && payout.USD.Cmp(p.thresholdAmountUSD) < 0 {
+		txLog.Warn("Skipping transaction because payout is below the threshold amount", zap.Stringer("threshold-usd", p.thresholdAmountUSD))
+		return nil, p.skipPayoutGroup(ctx, payoutGroupID)
 	}
-	txLog = txLog.With(zap.Stringer("eth-price", ethPrice))
+
+	// The ETH price is only needed for the fee checks below, which require
+	// a quoter to be configured.
+	var ethPrice decimal.Decimal
+	if p.quoter != nil {
+		ethPrice, err = p.getQuote(ctx, coinmarketcap.ETH)
+		if err != nil {
+			return nil, err
+		}
+		txLog = txLog.With(zap.Stringer("eth-price", ethPrice))
+	}
 
 	// Calculate how many tokens are required to cover the payout.
 	symbol := p.payer.Symbol()
@@ -483,30 +511,29 @@ func (p *Pipeline) trySendTransaction(ctx context.Context, payoutGroupID int64, 
 		return nil, err
 	}
 
-	maxFeeGWEI := decimal.NewFromInt(int64(rawTx.EstimatedGasLimit)).Mul(decimal.NewFromBigInt(rawTx.EstimatedGasFeeCap, 0))
-	maxFeeUSD := ethPrice.Mul(maxFeeGWEI).Shift(-18)
-
 	txLog = txLog.With(
 		zap.Uint64("estimated-gas-limit", rawTx.EstimatedGasLimit),
 		zap.Stringer("estimated-gas-fee-cap", rawTx.EstimatedGasFeeCap),
-		zap.Stringer("max-fee-usd", maxFeeUSD),
 	)
 
-	if p.maxFeeTolerationUSD.IsPositive() && p.maxFeeTolerationUSD.Cmp(maxFeeUSD) < 0 {
-		txLog.Warn("Payout max fee exceeds the max fee toleration", zap.Stringer("max-fee-toleration-usd", p.maxFeeTolerationUSD))
-		return nil, errMaxFeeExceeded
-	}
+	if p.quoter != nil {
+		maxFeeGWEI := decimal.NewFromInt(int64(rawTx.EstimatedGasLimit)).Mul(decimal.NewFromBigInt(rawTx.EstimatedGasFeeCap, 0))
+		maxFeeUSD := ethPrice.Mul(maxFeeGWEI).Shift(-18)
+		txLog = txLog.With(zap.Stringer("max-fee-usd", maxFeeUSD))
 
-	if p.thresholdDivisor.IsPositive() {
-		thresholdUSD := payout.USD.Div(p.thresholdDivisor)
-		// This is where we'd check if the payment is mandatory, and only skip
-		// if not, but mandatoriness is not being honored at this time.
-		if thresholdUSD.Cmp(maxFeeUSD) < 0 {
-			txLog.Warn("Skipping transaction because payout is below the minimum payout threshold", zap.Stringer("threshold-usd", thresholdUSD))
-			if err := p.db.SetPayoutGroupStatus(ctx, payoutGroupID, pipelinedb.PayoutGroupSkipped); err != nil {
-				return nil, errs.Wrap(err)
+		if p.maxFeeTolerationUSD.IsPositive() && p.maxFeeTolerationUSD.Cmp(maxFeeUSD) < 0 {
+			txLog.Warn("Payout max fee exceeds the max fee toleration", zap.Stringer("max-fee-toleration-usd", p.maxFeeTolerationUSD))
+			return nil, errMaxFeeExceeded
+		}
+
+		if p.thresholdDivisor.IsPositive() {
+			thresholdUSD := payout.USD.Div(p.thresholdDivisor)
+			// This is where we'd check if the payment is mandatory, and only skip
+			// if not, but mandatoriness is not being honored at this time.
+			if thresholdUSD.Cmp(maxFeeUSD) < 0 {
+				txLog.Warn("Skipping transaction because payout is below the minimum payout threshold", zap.Stringer("threshold-usd", thresholdUSD))
+				return nil, p.skipPayoutGroup(ctx, payoutGroupID)
 			}
-			return nil, errSkipped
 		}
 	}
 
@@ -540,6 +567,14 @@ func (p *Pipeline) trySendTransaction(ctx context.Context, payoutGroupID int64, 
 		return nil, err
 	}
 	return tx, nil
+}
+
+// skipPayoutGroup marks the payout group as skipped and returns errSkipped.
+func (p *Pipeline) skipPayoutGroup(ctx context.Context, payoutGroupID int64) error {
+	if err := p.db.SetPayoutGroupStatus(ctx, payoutGroupID, pipelinedb.PayoutGroupSkipped); err != nil {
+		return errs.Wrap(err)
+	}
+	return errSkipped
 }
 
 func (p *Pipeline) getQuote(ctx context.Context, symbol coinmarketcap.Symbol) (decimal.Decimal, error) {

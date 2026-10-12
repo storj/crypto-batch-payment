@@ -2,6 +2,7 @@
 # depth_limit            = 16
 # tx_delay               = 0
 # threshold_divisor      = 4
+# threshold_amount       = 0
 # max_fee_toleration_usd = 0
 
 [coinmarketcap]

@@ -99,6 +99,12 @@ type Pipeline struct {
 	// fees for the payout exceed this threshold then the payout is skipped.
 	ThresholdDivisor int `toml:"threshold_divisor"`
 
+	// ThresholdAmount is a fixed USD amount; payouts below it are skipped.
+	// Unlike ThresholdDivisor, it does not depend on the ETH price, so it
+	// can be used without CoinMarketCap. It cannot be combined with
+	// ThresholdDivisor. If <= 0, no fixed threshold is enforced.
+	ThresholdAmount decimal.Decimal `toml:"threshold_amount"`
+
 	// MaxFeeTolerationUSD is the maximum per-transfer fee to tolerate. Payouts
 	// that have an estimated fee higher than this value will be skipped. If
 	// <= 0, then no maximum fee is enforced.
@@ -146,6 +152,26 @@ func Parse(data []byte) (Config, error) {
 	d.DisallowUnknownFields()
 	if err := d.Decode(&config); err != nil {
 		return Config{}, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	// The threshold amount replaces the (defaulted) threshold divisor, but
+	// it is an error to explicitly configure both.
+	if config.Pipeline.ThresholdAmount.IsNegative() {
+		return Config{}, errors.New("threshold_amount must not be negative")
+	}
+	if config.Pipeline.ThresholdAmount.IsPositive() {
+		var explicit struct {
+			Pipeline struct {
+				ThresholdDivisor *int `toml:"threshold_divisor"`
+			} `toml:"pipeline"`
+		}
+		if err := toml.Unmarshal(data, &explicit); err != nil {
+			return Config{}, fmt.Errorf("failed to unmarshal config: %w", err)
+		}
+		if divisor := explicit.Pipeline.ThresholdDivisor; divisor != nil && *divisor > 0 {
+			return Config{}, errors.New("threshold_divisor and threshold_amount cannot be used together")
+		}
+		config.Pipeline.ThresholdDivisor = 0
 	}
 
 	// Set ETH defaults.
