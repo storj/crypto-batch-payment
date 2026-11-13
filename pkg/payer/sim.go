@@ -55,6 +55,10 @@ func (s *SimPayer) Symbol() string {
 	return "STORJ"
 }
 
+func (s *SimPayer) TokenAddress() common.Address {
+	return common.Address{}
+}
+
 func (s *SimPayer) NextNonce(ctx context.Context) (uint64, error) {
 	return uint64(0), nil
 }

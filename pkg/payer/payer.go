@@ -67,6 +67,9 @@ type Payer interface {
 	// Symbol returns with the symbol of the token (e.g. STORJ, USDC).
 	Symbol() string
 
+	// TokenAddress returns with the address of the token contract.
+	TokenAddress() common.Address
+
 	// NextNonce queries chain for the next available nonce value.
 	NextNonce(ctx context.Context) (uint64, error)
 

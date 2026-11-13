@@ -105,6 +105,10 @@ func (p *Payer) Symbol() string {
 	return p.symbol
 }
 
+func (p *Payer) TokenAddress() common.Address {
+	return p.contractAddress
+}
+
 func (p *Payer) NextNonce(ctx context.Context) (uint64, error) {
 	nonce, err := p.wallet.Nonce(ctx, nil)
 	if err != nil {

@@ -200,6 +200,47 @@ func Test_ThresholdAmount(t *testing.T) {
 	require.Equal(t, big.NewInt(1_000_000), txs[0].StorjTokens)
 }
 
+func Test_SkipInvalidPayee(t *testing.T) {
+	ctx := context.Background()
+
+	tokenAddress := common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
+	db := createTestDB(ctx, t, []*pipelinedb.Payout{
+		{
+			Payee: common.Address{},
+			USD:   decimal.New(1, 0),
+		},
+		{
+			Payee: tokenAddress,
+			USD:   decimal.New(1, 0),
+		},
+		{
+			Payee: common.HexToAddress("0x69F195FC69072649183a0F7D5663c53EBD1cDeF0"),
+			USD:   decimal.New(1, 0),
+		},
+	})
+	t.Cleanup(func() { assert.NoError(t, db.Close()) })
+
+	p, testPayer := createTestPipeline(ctx, t, db)
+	testPayer.tokenAddress = tokenAddress
+
+	require.NoError(t, p.initPayout(ctx))
+	done, err := p.payoutStep(ctx)
+	require.NoError(t, err)
+	require.False(t, done)
+
+	// Payouts to the zero address and to the token contract are skipped.
+	for _, id := range []int64{0, 1} {
+		status, err := db.FetchPayoutGroupStatus(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, pipelinedb.PayoutGroupSkipped, status)
+		txs, err := db.FetchPayoutGroupTransactions(ctx, id)
+		require.NoError(t, err)
+		require.Empty(t, txs)
+	}
+
+	assertPaymetGroupStatus(ctx, t, db, 2, pipelinedb.TxConfirmed)
+}
+
 func Test_QuoterRequirement(t *testing.T) {
 	ctx := context.Background()
 	db := createTestDB(ctx, t, nil)
@@ -289,6 +330,7 @@ type TestPayer struct {
 	nextNonce              uint64
 	symbol                 string
 	decimals               int32
+	tokenAddress           common.Address
 	sendTransactionHandler func(ctx context.Context, tx payer.Transaction) error
 	checkNonceGroupHandler func(ctx context.Context, nonceGroup *pipelinedb.NonceGroup, checkOnly bool) (pipelinedb.TxState, []*pipelinedb.TxStatus, error)
 }
@@ -320,6 +362,10 @@ func (t *TestPayer) Decimals() int32 {
 
 func (t *TestPayer) Symbol() string {
 	return t.symbol
+}
+
+func (t *TestPayer) TokenAddress() common.Address {
+	return t.tokenAddress
 }
 
 func (t *TestPayer) NextNonce(ctx context.Context) (uint64, error) {

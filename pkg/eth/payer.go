@@ -51,6 +51,7 @@ type PayerOptions struct {
 type Payer struct {
 	client        Client
 	contract      *contract.Token
+	tokenAddress  common.Address
 	owner         common.Address
 	chainID       int
 	signer        bind.SignerFn
@@ -94,6 +95,7 @@ func NewPayer(ctx context.Context,
 		chainID:       chainID,
 		client:        client,
 		contract:      contract,
+		tokenAddress:  contractAddress,
 		signer:        transactor.Signer,
 		from:          transactor.From,
 		tokenDecimals: int32(decimals.Int64()),
@@ -116,6 +118,10 @@ func (e *Payer) Decimals() int32 {
 
 func (e *Payer) Symbol() string {
 	return e.tokenSymbol
+}
+
+func (e *Payer) TokenAddress() common.Address {
+	return e.tokenAddress
 }
 
 func (e *Payer) NextNonce(ctx context.Context) (uint64, error) {

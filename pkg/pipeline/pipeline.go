@@ -457,6 +457,18 @@ func (p *Pipeline) trySendTransaction(ctx context.Context, payoutGroupID int64, 
 
 	txLog = txLog.With(zap.Stringer("usd", payout.USD))
 
+	// Transfers to the zero address or to the token contract itself are
+	// either rejected by the token (e.g. USDC blacklists its own address)
+	// or burn the tokens. Leave these payouts unpaid.
+	if payout.Payee == (common.Address{}) {
+		txLog.Warn("Skipping transaction because payee is the zero address", zap.Stringer("payee", payout.Payee))
+		return nil, p.skipPayoutGroup(ctx, payoutGroupID)
+	}
+	if tokenAddress := p.payer.TokenAddress(); tokenAddress != (common.Address{}) && payout.Payee == tokenAddress {
+		txLog.Warn("Skipping transaction because payee is the token contract address", zap.Stringer("payee", payout.Payee))
+		return nil, p.skipPayoutGroup(ctx, payoutGroupID)
+	}
+
 	if p.thresholdAmountUSD.IsPositive() && payout.USD.Cmp(p.thresholdAmountUSD) < 0 {
 		txLog.Warn("Skipping transaction because payout is below the threshold amount", zap.Stringer("threshold-usd", p.thresholdAmountUSD))
 		return nil, p.skipPayoutGroup(ctx, payoutGroupID)
